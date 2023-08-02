@@ -221,7 +221,7 @@ function trigger(target, key, type) {
   });
 }
 
-function reactive(obj) {
+function createReactive(obj, isShallow = false) {
   return new Proxy(obj, {
     // 检查删除属性
     deleteProperty(target, key) {
@@ -249,7 +249,15 @@ function reactive(obj) {
         return target;
       }
       track(target, key);
-      return Reflect.get(target, key, receiver);
+      const res = Reflect.get(target, key, receiver);
+      if (isShallow) {
+        return res;
+      }
+      // 如果访问的是对象，则递归调用
+      if (typeof res === "object" && res !== null) {
+        return createReactive(res);
+      }
+      return res;
     },
     set: (target, key, value, receiver) => {
       // 先获取旧值
@@ -271,14 +279,19 @@ function reactive(obj) {
   });
 }
 
+function reactive(obj) {
+  return createReactive(obj);
+}
+
+function shallowReactive(obj) {
+  return createReactive(obj, true)
+}
+
+
 // 源数据
-const obj = {};
-const proto = { bar: 1 };
-const child = reactive(obj);
-const parent = reactive(proto);
-Object.setPrototypeOf(child, parent);
+const obj = reactive({ foo: { bar: 1 } });
 
 effect(() => {
-  console.log("child.bar: ", child.bar);
+  console.log(obj.foo.bar);
 });
-child.bar = 2;
+obj.foo.bar = 4;
