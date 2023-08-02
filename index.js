@@ -7,12 +7,6 @@ const TriggerType = {
   DELETE: "DELETE",
 };
 
-// 源数据
-const data = {
-  foo: 1,
-  bar: 2,
-};
-
 // 定义一个任务队列
 const jobQueue = new Set();
 // 使用 Promise.resolve()创建一个promise实例，我们用它将一个任务添加到微任务队列
@@ -42,64 +36,10 @@ const bucket = new WeakMap();
 // 副作用函数堆栈（用于解决effect可以嵌套执行）
 const effectStack = [];
 
-const ITERATE_KEY = Symbol();
-const obj = new Proxy(data, {
-  // 检查删除属性
-  deleteProperty(target, key) {
-    // 检查被操作的属性是否是对象自己的属性
-    const hadKey = Object.prototype.hasOwnProperty.call(target, key);
-    // 使用Reflect.deleteProperty完成属性的删除
-    const res = Reflect.deleteProperty(target, key);
-    if (res && hadKey) {
-      trigger(target, key, TriggerType.DELETE);
-    }
-  },
-  ownKeys: (target) => {
-    // 将副作用函数与 ITERATE_KEY关联起来
-    track(target, ITERATE_KEY);
-    return Reflect.ownKeys(target);
-  },
-
-  // 拦截 in 操作
-  has: (target, key) => {
-    track(target, key);
-    return Reflect.has(target, key);
-  },
-  get: (target, key, receiver) => {
-    track(target, key);
-    return Reflect.get(target, key, receiver);
-  },
-  set: (target, key, value, receiver) => {
-    // 先获取旧值
-    const oldValue = target[key];
-    // 如果属性不存在，则证明此属性是新增，否则是修改该属性
-    const type = Object.prototype.hasOwnProperty.call(target, key)
-      ? TriggerType.SET
-      : TriggerType.ADD;
-    const res = Reflect.set(target, key, value, receiver);
-    // 新旧值不相等，且都不是NaN时 （因为NaN !== NaN结果为true）
-    if (oldValue !== value && !(isNaN(oldValue) && isNaN(value))) {
-      trigger(target, key, type);
-    }
-    return res;
-  },
-});
-
-/* effect(
-  () => {
-    console.log("effectFn foo 执行");
-    console.log(obj.foo);
-  },
-  {
-    scheduler(fn) {
-      // 每次调度时，将副作用函数添加到 jobQueue 队列中
-      jobQueue.add(fn);
-      // 调用 flushJob 刷新队列
-      flushJob();
-    },
-  }
-); */
-
+// for in 循环遍历设置的 key值
+const ITERATE_KEY = Symbol("ITERATE_KEY");
+// 访问响应式对象的代理对象的key值
+const RAW = Symbol("RAW");
 // 副作用
 function effect(fn, options = {}) {
   const effectFn = () => {
@@ -122,11 +62,6 @@ function effect(fn, options = {}) {
   }
   return effectFn;
 }
-
-const sumRes = computed(() => obj.bar + obj.foo);
-effect(() => {
-  console.log("computed:", sumRes.value);
-});
 
 // computed计算函数
 function computed(getter) {
@@ -159,12 +94,6 @@ function computed(getter) {
   };
   return obj;
 }
-watch(
-  () => obj.bar,
-  (newVal, oldValue) => {
-    console.log(newVal, oldValue);
-  }
-);
 
 // watch函数实现
 function watch(source, cb, options = {}) {
@@ -292,30 +221,64 @@ function trigger(target, key, type) {
   });
 }
 
-console.log("结束了");
-const update = () => {
-  obj.foo = 1;
-  obj.foo = 1;
-  obj.foo = 1;
-  obj.foo = 1;
-  obj.foo = 1;
-  obj.foo = 1;
-  obj.foo = 1;
-  obj.foo = 1;
-  obj.foo = 1;
-  obj.bar = 1;
-  obj.bar = 1;
-  obj.bar = 1;
-  obj.bar = 1;
-  obj.bar = 1;
-  obj.bar = 1;
-  obj.bar = 1;
-  obj.bar = 1;
-  obj.bar = 1;
-  obj.foo = 10;
-  obj.bar = 10;
-};
-update();
-setTimeout(() => {
-  obj.foo++;
-}, 1000);
+function reactive(obj) {
+  return new Proxy(obj, {
+    // 检查删除属性
+    deleteProperty(target, key) {
+      // 检查被操作的属性是否是对象自己的属性
+      const hadKey = Object.prototype.hasOwnProperty.call(target, key);
+      // 使用Reflect.deleteProperty完成属性的删除
+      const res = Reflect.deleteProperty(target, key);
+      if (res && hadKey) {
+        trigger(target, key, TriggerType.DELETE);
+      }
+    },
+    ownKeys: (target) => {
+      // 将副作用函数与 ITERATE_KEY关联起来
+      track(target, ITERATE_KEY);
+      return Reflect.ownKeys(target);
+    },
+
+    // 拦截 in 操作
+    has: (target, key) => {
+      track(target, key);
+      return Reflect.has(target, key);
+    },
+    get: (target, key, receiver) => {
+      if (key === RAW) {
+        return target;
+      }
+      track(target, key);
+      return Reflect.get(target, key, receiver);
+    },
+    set: (target, key, value, receiver) => {
+      // 先获取旧值
+      const oldValue = target[key];
+      // 如果属性不存在，则证明此属性是新增，否则是修改该属性
+      const type = Object.prototype.hasOwnProperty.call(target, key)
+        ? TriggerType.SET
+        : TriggerType.ADD;
+      const res = Reflect.set(target, key, value, receiver);
+      // raw为人为自定义添加到属性，如果两者相等，说明 receiver就是 target 的代理对象
+      if (target === receiver[RAW]) {
+        // 新旧值不相等，且都不是NaN时 （因为NaN !== NaN结果为true）
+        if (oldValue !== value && !(isNaN(oldValue) && isNaN(value))) {
+          trigger(target, key, type);
+        }
+      }
+      return res;
+    },
+  });
+}
+
+// 源数据
+const obj = {};
+const proto = { bar: 1 };
+const child = reactive(obj);
+const parent = reactive(proto);
+Object.setPrototypeOf(child, parent);
+
+effect(() => {
+  console.log("child.bar: ", child.bar);
+});
+child.bar = 2;
