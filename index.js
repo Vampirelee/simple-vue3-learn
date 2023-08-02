@@ -4,6 +4,7 @@ let activeEffect;
 const TriggerType = {
   SET: "SET",
   ADD: "ADD",
+  DELETE: "DELETE",
 };
 
 // 源数据
@@ -43,6 +44,16 @@ const effectStack = [];
 
 const ITERATE_KEY = Symbol();
 const obj = new Proxy(data, {
+  // 检查删除属性
+  deleteProperty(target, key) {
+    // 检查被操作的属性是否是对象自己的属性
+    const hadKey = Object.prototype.hasOwnProperty.call(target, key);
+    // 使用Reflect.deleteProperty完成属性的删除
+    const res = Reflect.deleteProperty(target, key);
+    if (res && hadKey) {
+      trigger(target, key, TriggerType.DELETE);
+    }
+  },
   ownKeys: (target) => {
     // 将副作用函数与 ITERATE_KEY关联起来
     track(target, ITERATE_KEY);
@@ -257,7 +268,7 @@ function trigger(target, key, type) {
       }
     });
 
-  if (type === TriggerType.ADD) {
+  if (type === TriggerType.ADD || type === TriggerType.DELETE) {
     const iterateEffects = depsMap.get(ITERATE_KEY);
     iterateEffects &&
       iterateEffects.forEach((effectFn) => {
