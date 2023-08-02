@@ -70,12 +70,17 @@ const obj = new Proxy(data, {
     return Reflect.get(target, key, receiver);
   },
   set: (target, key, value, receiver) => {
+    // 先获取旧值
+    const oldValue = target[key];
     // 如果属性不存在，则证明此属性是新增，否则是修改该属性
     const type = Object.prototype.hasOwnProperty.call(target, key)
       ? TriggerType.SET
       : TriggerType.ADD;
     const res = Reflect.set(target, key, value, receiver);
-    trigger(target, key, type);
+    // 新旧值不相等，且都不是NaN时 （因为NaN !== NaN结果为true）
+    if (oldValue !== value && !(isNaN(oldValue) && isNaN(value))) {
+      trigger(target, key, type);
+    }
     return res;
   },
 });
