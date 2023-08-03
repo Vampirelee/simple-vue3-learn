@@ -245,7 +245,7 @@ function trigger(target, key, type, newVal) {
   });
 }
 
-function createReactive(obj, { isShallow = false, isReadonly = false }) {
+function createReactive(obj, { isShallow = false, isReadonly = false } = {}) {
   return new Proxy(obj, {
     // 检查删除属性
     deleteProperty(target, key) {
@@ -313,7 +313,10 @@ function createReactive(obj, { isShallow = false, isReadonly = false }) {
       // raw为人为自定义添加到属性，如果两者相等，说明 receiver就是 target 的代理对象
       if (target === receiver[RAW]) {
         // 新旧值不相等，且都不是NaN时 （因为NaN !== NaN结果为true）
-        if (oldValue !== newVal && !(isNaN(oldValue) && isNaN(newVal))) {
+        if (
+          oldValue !== newVal &&
+          (oldValue === oldValue || newVal === newVal)
+        ) {
           trigger(target, key, type, newVal);
         }
       }
@@ -343,9 +346,14 @@ function shallowReadonly(obj) {
 }
 
 // 源数据
-const obj = reactive({ foo: { bar: 1 } });
-
+const arr = reactive(["foo"]);
 effect(() => {
-  console.log(obj.foo.bar);
+  for (const key in arr) {
+    console.log(key);
+  }
 });
-obj.foo.bar = 4;
+arr[1] = "bar";
+arr[2] = "bar";
+arr[3] = "bar";
+arr[3] = "bar";
+arr.length = 0;
