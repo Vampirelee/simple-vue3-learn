@@ -188,7 +188,7 @@ function track(target, key) {
   activeEffect.deps.push(deps);
 }
 // trigger触发更新
-function trigger(target, key, type) {
+function trigger(target, key, type, newVal) {
   const depsMap = bucket.get(target);
   if (!depsMap) return;
   // 需要运行的副作用函数
@@ -201,7 +201,31 @@ function trigger(target, key, type) {
         effectsToTun.add(effectFn);
       }
     });
+  // 如果操作目标是数组，并且修改了数组的 length 属性，则对于索引大于或等于新设置数组的 length 值的元素，需要执行相关副作用函数
+  if (Array.isArray(target) && key === "length") {
+    depsMap.forEach((effects, key) => {
+      if (key >= newVal) {
+        effects.forEach((effectFn) => {
+          if (effectFn !== activeEffect) {
+            effectsToTun.add(effectFn);
+          }
+        });
+      }
+    });
+  }
 
+  // 当操作类型是ADD并且目标对象是数组时，应该取出并执行那些与 length属性相关联的副作用函数
+  if (type === TriggerType.ADD && Array.isArray(target)) {
+    const lengthEffects = depsMap.get("length");
+    lengthEffects &&
+      lengthEffects.forEach((effectFn) => {
+        if (effectFn !== activeEffect) {
+          effectsToTun.add(effectFn);
+        }
+      });
+  }
+
+  // for in操作和delete操作
   if (type === TriggerType.ADD || type === TriggerType.DELETE) {
     const iterateEffects = depsMap.get(ITERATE_KEY);
     iterateEffects &&
@@ -238,8 +262,8 @@ function createReactive(obj, { isShallow = false, isReadonly = false }) {
       }
     },
     ownKeys: (target) => {
-      // 将副作用函数与 ITERATE_KEY关联起来
-      track(target, ITERATE_KEY);
+      // 将副作用函数与 ITERATE_KEY关联起来 捕获 for...in操作， 如果是数组，则捕获length属性（因为数组length的修改会影响到数组的for...in操作）
+      track(target, Array.isArray(target) ? "length" : ITERATE_KEY);
       return Reflect.ownKeys(target);
     },
 
@@ -268,23 +292,29 @@ function createReactive(obj, { isShallow = false, isReadonly = false }) {
       }
       return res;
     },
-    set: (target, key, value, receiver) => {
+    set: (target, key, newVal, receiver) => {
       if (isReadonly) {
         console.warn(`属性${key}是只读的`);
         return true;
       }
       // 先获取旧值
       const oldValue = target[key];
-      // 如果属性不存在，则证明此属性是新增，否则是修改该属性
-      const type = Object.prototype.hasOwnProperty.call(target, key)
+
+      // 如果代理目标是数组，则检测被设置的索引值是否小于数组的长度
+      const type = Array.isArray(target)
+        ? Number(key) < target.length
+          ? TriggerType.SET
+          : TriggerType.ADD
+        : // 如果属性不存在，则证明此属性是新增，否则是修改该属性
+        Object.prototype.hasOwnProperty.call(target, key)
         ? TriggerType.SET
         : TriggerType.ADD;
-      const res = Reflect.set(target, key, value, receiver);
+      const res = Reflect.set(target, key, newVal, receiver);
       // raw为人为自定义添加到属性，如果两者相等，说明 receiver就是 target 的代理对象
       if (target === receiver[RAW]) {
         // 新旧值不相等，且都不是NaN时 （因为NaN !== NaN结果为true）
-        if (oldValue !== value && !(isNaN(oldValue) && isNaN(value))) {
-          trigger(target, key, type);
+        if (oldValue !== newVal && !(isNaN(oldValue) && isNaN(newVal))) {
+          trigger(target, key, type, newVal);
         }
       }
       return res;
