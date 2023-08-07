@@ -7,6 +7,11 @@ const TriggerType = {
   DELETE: "DELETE",
 };
 
+// for in 循环遍历设置的 key值
+const ITERATE_KEY = Symbol("ITERATE_KEY");
+// 访问响应式对象的代理对象的key值
+const RAW = Symbol("RAW");
+
 // 定义一个任务队列
 const jobQueue = new Set();
 // 使用 Promise.resolve()创建一个promise实例，我们用它将一个任务添加到微任务队列
@@ -36,10 +41,6 @@ const bucket = new WeakMap();
 // 副作用函数堆栈（用于解决effect可以嵌套执行）
 const effectStack = [];
 
-// for in 循环遍历设置的 key值
-const ITERATE_KEY = Symbol("ITERATE_KEY");
-// 访问响应式对象的代理对象的key值
-const RAW = Symbol("RAW");
 // 副作用
 function effect(fn, options = {}) {
   const effectFn = () => {
@@ -245,6 +246,21 @@ function trigger(target, key, type, newVal) {
   });
 }
 
+const originMethod = Array.prototype.includes;
+// 重新定义数组的某些方法以支持响应式系统
+const arrayInstrumentations = {};
+["includes", "indexOf", "lastIndexOf"].forEach((key) => {
+  arrayInstrumentations[key] = function (...args) {
+    // this是代理对象，先在代理对象中查找，将结果存储到 res 中
+    let res = originMethod.apply(this, args);
+    if (res === false || res === -1) {
+      // res为false 说明没有找到， 通过 this.raw 拿到原始数组，再去其中查找并更新 res 值
+      res = originMethod.apply(this[RAW], args);
+    }
+    return res;
+  };
+});
+
 function createReactive(obj, { isShallow = false, isReadonly = false } = {}) {
   return new Proxy(obj, {
     // 检查删除属性
@@ -277,8 +293,13 @@ function createReactive(obj, { isShallow = false, isReadonly = false } = {}) {
         return target;
       }
 
-      // 非只读的时候才需要建立响应联系
-      if (!isReadonly) {
+      // 如果操作的目标对象是数组，并且key存在于 arrayInstrumentations上，那么返回定义在 arrayInstrumentations
+      if (Array.isArray(target) && arrayInstrumentations.hasOwnProperty(key)) {
+        return Reflect.get(arrayInstrumentations, key, receiver);
+      }
+
+      // 非只读或非key的类型是symbol(for of 会访问数组的迭代器和length属性)的时候才需要建立响应联系
+      if (!isReadonly && typeof key !== "symbol") {
         track(target, key);
       }
 
@@ -325,8 +346,19 @@ function createReactive(obj, { isShallow = false, isReadonly = false } = {}) {
   });
 }
 
+// 定义一个Map实例，存储原始对象到代理对象到映射
+const reactiveMap = new Map();
+
 function reactive(obj) {
-  return createReactive(obj);
+  // 优先通过原始对象 obj 寻找之前创建的代理对象，如果找到了，直接返回已有的代理对象
+  const existionProxy = reactiveMap.get(obj);
+  if (existionProxy) return existionProxy;
+
+  // 否则，创建新的代理对象
+  const proxy = createReactive(obj);
+  // 存储到Map中，从而避免重复创建
+  reactiveMap.set(obj, proxy);
+  return proxy;
 }
 
 function shallowReactive(obj) {
@@ -345,15 +377,8 @@ function shallowReadonly(obj) {
   return createReactive(obj, { isShallow: true, isReadonly: true });
 }
 
-// 源数据
-const arr = reactive(["foo"]);
-effect(() => {
-  for (const key in arr) {
-    console.log(key);
-  }
-});
-arr[1] = "bar";
-arr[2] = "bar";
-arr[3] = "bar";
-arr[3] = "bar";
-arr.length = 0;
+// test 区域
+const obj = {};
+const arr = reactive([obj]);
+
+console.log(arr.includes(obj));
