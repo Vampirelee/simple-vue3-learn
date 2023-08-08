@@ -176,7 +176,7 @@ function cleanup(effectFn) {
 
 // track收集依赖
 function track(target, key) {
-  if (!activeEffect) return;
+  if (!activeEffect || !shouldTrack) return;
   let depsMap = bucket.get(target);
   if (!depsMap) {
     bucket.set(target, (depsMap = new Map()));
@@ -249,14 +249,30 @@ function trigger(target, key, type, newVal) {
 const originMethod = Array.prototype.includes;
 // 重新定义数组的某些方法以支持响应式系统
 const arrayInstrumentations = {};
-["includes", "indexOf", "lastIndexOf"].forEach((key) => {
-  arrayInstrumentations[key] = function (...args) {
+["includes", "indexOf", "lastIndexOf"].forEach((method) => {
+  arrayInstrumentations[method] = function (...args) {
     // this是代理对象，先在代理对象中查找，将结果存储到 res 中
     let res = originMethod.apply(this, args);
     if (res === false || res === -1) {
       // res为false 说明没有找到， 通过 this.raw 拿到原始数组，再去其中查找并更新 res 值
       res = originMethod.apply(this[RAW], args);
     }
+    return res;
+  };
+});
+
+// 重新定义数组的push 方法以支持响应式系统
+let shouldTrack = true;
+["push", "pop", "shift", "unshift", "splice"].forEach((method) => {
+  // 取得原始 push 方法
+  const originMethod = Array.prototype[method];
+  arrayInstrumentations[method] = function (...args) {
+    // 在调用原始方法之前，禁止追踪
+    shouldTrack = false;
+    // push方法的默认行为
+    let res = originMethod.apply(this, args);
+    // 在调用原始方法之后，恢复原来的行为，即允许追踪
+    shouldTrack = true;
     return res;
   };
 });
@@ -378,7 +394,10 @@ function shallowReadonly(obj) {
 }
 
 // test 区域
-const obj = {};
-const arr = reactive([obj]);
-
-console.log(arr.includes(obj));
+const arr = reactive([]);
+effect(() => {
+  arr.push(1);
+});
+effect(() => {
+  arr.push(1);
+});
