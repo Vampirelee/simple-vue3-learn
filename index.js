@@ -246,10 +246,10 @@ function trigger(target, key, type, newVal) {
   });
 }
 
-const originMethod = Array.prototype.includes;
 // 重新定义数组的某些方法以支持响应式系统
 const arrayInstrumentations = {};
 ["includes", "indexOf", "lastIndexOf"].forEach((method) => {
+  const originMethod = Array.prototype[method];
   arrayInstrumentations[method] = function (...args) {
     // this是代理对象，先在代理对象中查找，将结果存储到 res 中
     let res = originMethod.apply(this, args);
@@ -308,7 +308,6 @@ function createReactive(obj, { isShallow = false, isReadonly = false } = {}) {
       if (key === RAW) {
         return target;
       }
-
       // 如果操作的目标对象是数组，并且key存在于 arrayInstrumentations上，那么返回定义在 arrayInstrumentations
       if (Array.isArray(target) && arrayInstrumentations.hasOwnProperty(key)) {
         return Reflect.get(arrayInstrumentations, key, receiver);
@@ -394,10 +393,7 @@ function shallowReadonly(obj) {
 }
 
 // test 区域
-const arr = reactive([]);
+const arr = reactive([123, 456]);
 effect(() => {
-  arr.push(1);
-});
-effect(() => {
-  arr.push(1);
+  console.log(arr.includes(123));
 });
