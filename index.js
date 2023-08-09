@@ -277,6 +277,56 @@ let shouldTrack = true;
   };
 });
 
+// 重新定义Set、Map原型上的方法，以便更好地支持响应式系统
+const mutableInstrumentations = {
+  add(item) {
+    // this仍然指向代理对象，通过RAW属性获取到原始对象
+    const target = this[RAW];
+    const hasKey = target.has(item);
+    const res = target.add(item);
+    // 当要添加的元素不存在时，才触发响应
+    if (!hasKey) trigger(target, ITERATE_KEY, TriggerType.ADD);
+    return res;
+  },
+  delete(item) {
+    const target = this[RAW];
+    const hasKey = target.has(item);
+    const res = target.delete(item);
+    // 当要删除的元素确实存在时，才触发响应
+    if (hasKey) trigger(target, ITERATE_KEY, TriggerType.DELETE);
+    return res;
+  },
+  get(key) {
+    // 获取原始对象
+    const target = this[RAW];
+    const hasKey = target.has(key);
+    // 追踪依赖，建立响应联系
+    track(target, key);
+    // 如果存在，则返回结果。这里要注意的是，如果得到的结果 res 仍然是可代理的数据。则要返回使用 reactive 包装后的响应式数据
+    if (hasKey) {
+      const res = target.get(key);
+      return typeof res === "object" ? reactive(res) : res;
+    }
+  },
+  set(key, value) {
+    const target = this[RAW];
+    const hasKey = target.has(key);
+    // 获取旧值
+    const oldValue = target.get(key);
+    // 获取原始数据，由于value 本身可能已经是原始数据，所以此时value.raw不存在，则直接使用value
+    target.set(key, value[RAW] || value);
+    // 如果不存在，则说明是新增的元素
+    if (!hasKey) {
+      trigger(target, ITERATE_KEY, TriggerType.ADD);
+    } else if (
+      oldValue !== value ||
+      (oldValue === oldValue && value === value)
+    ) {
+      trigger(target, key, TriggerType.SET);
+    }
+  },
+};
+
 function createReactive(obj, { isShallow = false, isReadonly = false } = {}) {
   return new Proxy(obj, {
     // 检查删除属性
@@ -286,10 +336,10 @@ function createReactive(obj, { isShallow = false, isReadonly = false } = {}) {
         return true;
       }
       // 检查被操作的属性是否是对象自己的属性
-      const hadKey = Object.prototype.hasOwnProperty.call(target, key);
+      const haskey = Object.prototype.hasOwnProperty.call(target, key);
       // 使用Reflect.deleteProperty完成属性的删除
       const res = Reflect.deleteProperty(target, key);
-      if (res && hadKey) {
+      if (res && haskey) {
         trigger(target, key, TriggerType.DELETE);
       }
     },
@@ -308,6 +358,21 @@ function createReactive(obj, { isShallow = false, isReadonly = false } = {}) {
       if (key === RAW) {
         return target;
       }
+
+      // 这里单独处理 Set、Map数据类型
+      if (target instanceof Set || target instanceof Map) {
+        // 读取size属性时，需要通过指定第三个参数 receiver 为 原始对象 target 从而修复问题
+        if (key === "size") {
+          track(target, ITERATE_KEY);
+          return Reflect.get(target, key, target);
+        }
+        if (mutableInstrumentations.hasOwnProperty(key)) {
+          return mutableInstrumentations[key];
+        }
+        // 代理Set、Map数据类型方法的正确this，以便正确执行，如delete等方法
+        return target[key].bind(target);
+      }
+
       // 如果操作的目标对象是数组，并且key存在于 arrayInstrumentations上，那么返回定义在 arrayInstrumentations
       if (Array.isArray(target) && arrayInstrumentations.hasOwnProperty(key)) {
         return Reflect.get(arrayInstrumentations, key, receiver);
@@ -393,7 +458,9 @@ function shallowReadonly(obj) {
 }
 
 // test 区域
-const arr = reactive([123, 456]);
+const p1 = reactive(new Set([1, 2, 3]));
 effect(() => {
-  console.log(arr.includes(123));
+  console.log(p1.size); // 3
 });
+p1.add(1212);
+p1.add(12121);
