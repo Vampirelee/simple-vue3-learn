@@ -226,8 +226,13 @@ function trigger(target, key, type, newVal) {
       });
   }
 
-  // for in操作和delete操作
-  if (type === TriggerType.ADD || type === TriggerType.DELETE) {
+  // for in操作和delete操作。 如果操作类型是 SET，并且目标对象是 Map 类型的数据，也应该触发那些与 ITERATE_KEY 相关联的副作用函数重新执行
+  if (
+    type === TriggerType.ADD ||
+    type === TriggerType.DELETE ||
+    (type === TriggerType.SET &&
+      Object.prototype.toString.call(target) === "[object Map]")
+  ) {
     const iterateEffects = depsMap.get(ITERATE_KEY);
     iterateEffects &&
       iterateEffects.forEach((effectFn) => {
@@ -325,7 +330,48 @@ const mutableInstrumentations = {
       trigger(target, key, TriggerType.SET);
     }
   },
+  forEach(callback, thisArg) {
+    // wrap 函数用来把可代理的值转换为响应式数据
+    const wrap = (val) => (typeof val === "object" ? reactive(val) : val);
+    // 取得原始对象
+    const target = this[RAW];
+    // 与ITERATE_KEY建立响应联系
+    track(target, ITERATE_KEY);
+    // 通过原始数据对象调用 forEach 方法，并把callback 传递过去
+    target.forEach((v, k) => {
+      // 手动调用callback， 用 wrap 函数包裹 value 和 key 后再传给 callback， 这样就实现了深响应
+      callback.call(thisArg, wrap(v), wrap(k), this);
+    });
+  },
+  [Symbol.iterator]: iterationMethod,
+  entries: iterationMethod,
 };
+
+// Symbol.iterator相关方法
+function iterationMethod() {
+  // 获取原始数据对象 target
+  const target = this[RAW];
+  // 获得原始迭代器的方法
+  const itr = target[Symbol.iterator]();
+  const wrap = (val) =>
+    typeof val === "object" && val !== null ? reactive(val) : val;
+
+  // 调用track函数建立响应联系
+  track(target, ITERATE_KEY);
+  return {
+    next() {
+      const { value, done } = itr.next();
+      return {
+        value: value ? [wrap(value[0]), wrap(value[1])] : value,
+        done,
+      };
+    },
+    // 实现可迭代协议
+    [Symbol.iterator]() {
+      return this;
+    },
+  };
+}
 
 function createReactive(obj, { isShallow = false, isReadonly = false } = {}) {
   return new Proxy(obj, {
@@ -458,9 +504,19 @@ function shallowReadonly(obj) {
 }
 
 // test 区域
-const p1 = reactive(new Set([1, 2, 3]));
+const p1 = reactive(
+  new Map([
+    ["key1", "value1"],
+    ["key2", "value2"],
+  ])
+);
+
 effect(() => {
-  console.log(p1.size); // 3
+  for (const [key, value] of p1.entries()) {
+    console.log(key, value);
+  }
 });
-p1.add(1212);
-p1.add(12121);
+
+setTimeout(() => {
+  p1.set("key3", "value3");
+}, 1000);
