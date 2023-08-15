@@ -274,7 +274,7 @@ const arrayInstrumentations = {};
     // this是代理对象，先在代理对象中查找，将结果存储到 res 中
     let res = originMethod.apply(this, args);
     if (res === false || res === -1) {
-      // res为false 说明没有找到， 通过 this.raw 拿到原始数组，再去其中查找并更新 res 值
+      // res为false 说明没有找到， 通过 this.raw 拿到原始数组，再去其中查找并更新 res 值（解决查询对象的问题）
       res = originMethod.apply(this[RAW], args);
     }
     return res;
@@ -287,7 +287,7 @@ let shouldTrack = true;
   // 取得原始 push 方法
   const originMethod = Array.prototype[method];
   arrayInstrumentations[method] = function (...args) {
-    // 在调用原始方法之前，禁止追踪
+    // 在调用原始方法之前，禁止追踪（这些方法会触发length相关依赖，导致死循环）
     shouldTrack = false;
     // push方法的默认行为
     let res = originMethod.apply(this, args);
