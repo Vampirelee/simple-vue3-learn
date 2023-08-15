@@ -9,6 +9,8 @@ const TriggerType = {
 
 // for in 循环遍历设置的 key值
 const ITERATE_KEY = Symbol("ITERATE_KEY");
+// for in 循环便利设置的 key值（对于key值）
+const MAP_KEY_ITERATE_KEY = Symbol("MAP_KEY_ITERATE_KEY");
 // 访问响应式对象的代理对象的key值
 const RAW = Symbol("RAW");
 
@@ -202,6 +204,19 @@ function trigger(target, key, type, newVal) {
         effectsToTun.add(effectFn);
       }
     });
+  // 操作类型为ADD或DELETE
+  if (
+    (type === TriggerType.ADD || type === TriggerType.DELETE) &&
+    target instanceof Map
+  ) {
+    const iterateEffects = depsMap.get(MAP_KEY_ITERATE_KEY);
+    iterateEffects &&
+      iterateEffects.forEach((effectFn) => {
+        if (effectFn !== activeEffect) {
+          effectsToTun.add(effectFn);
+        }
+      });
+  }
   // 如果操作目标是数组，并且修改了数组的 length 属性，则对于索引大于或等于新设置数组的 length 值的元素，需要执行相关副作用函数
   if (Array.isArray(target) && key === "length") {
     depsMap.forEach((effects, key) => {
@@ -343,26 +358,41 @@ const mutableInstrumentations = {
       callback.call(thisArg, wrap(v), wrap(k), this);
     });
   },
-  [Symbol.iterator]: iterationMethod,
-  entries: iterationMethod,
+  [Symbol.iterator]: function () {
+    return iterationMethod.call(this, Symbol.iterator);
+  },
+  entries: function () {
+    return iterationMethod.call(this, "entries");
+  },
+  values: function () {
+    return iterationMethod.call(this, "values");
+  },
+  keys: function () {
+    return iterationMethod.call(this, "keys");
+  },
 };
 
 // Symbol.iterator相关方法
-function iterationMethod() {
+function iterationMethod(method) {
   // 获取原始数据对象 target
   const target = this[RAW];
   // 获得原始迭代器的方法
-  const itr = target[Symbol.iterator]();
+  const itr = target[method]();
   const wrap = (val) =>
     typeof val === "object" && val !== null ? reactive(val) : val;
 
   // 调用track函数建立响应联系
-  track(target, ITERATE_KEY);
+  track(target, method === "keys" ? MAP_KEY_ITERATE_KEY : ITERATE_KEY);
   return {
     next() {
       const { value, done } = itr.next();
       return {
-        value: value ? [wrap(value[0]), wrap(value[1])] : value,
+        value:
+          method === Symbol.iterator
+            ? value
+              ? [wrap(value[0]), wrap(value[1])]
+              : value
+            : wrap(value),
         done,
       };
     },
@@ -512,8 +542,8 @@ const p1 = reactive(
 );
 
 effect(() => {
-  for (const [key, value] of p1.entries()) {
-    console.log(key, value);
+  for (const key of p1.keys()) {
+    console.log(key);
   }
 });
 
