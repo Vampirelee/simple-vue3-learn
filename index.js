@@ -606,14 +606,3 @@ function shallowReadonly(obj) {
   return createReactive(obj, { isShallow: true, isReadonly: true });
 }
 
-// test 区域
-const obj = reactive({ foo: 11, bar: 2 });
-const newObj = proxyRefs({
-  ...toRefs(obj),
-});
-
-effect(() => {
-  console.log(newObj.foo);
-});
-
-newObj.foo = 2;
