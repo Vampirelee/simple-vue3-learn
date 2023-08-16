@@ -502,6 +502,56 @@ function createReactive(obj, { isShallow = false, isReadonly = false } = {}) {
   });
 }
 
+/**
+ * 批量转换 ref 对象
+ * @param {} obj 响应式数据
+ * @returns
+ */
+function toRefs(obj) {
+  const ret = {};
+  // 使用 for ... in 循环遍历对象
+  for (const key in obj) {
+    // 逐个调用 toRef 完成转换
+    ret[key] = toRef(obj, key);
+  }
+  return ret;
+}
+
+/**
+ * toRef 函数
+ * @param {} obj 响应式数据
+ * @param {} key 响应式数据的 key
+ */
+function toRef(obj, key) {
+  const wrapper = {
+    get value() {
+      return obj[key];
+    },
+    set value(val) {
+      obj[key] = val;
+    },
+  };
+  // 使用 Object.defineProperty 在 warpper 对象上定义一个不可枚举的属性 __v_isRef，并设置值为 true   (不可枚举、不可写)
+  Object.defineProperty(wrapper, "__v_isRef", {
+    value: true,
+  });
+  return wrapper;
+}
+
+// ref函数实现
+function ref(val) {
+  // 包裹基本数据
+  const wrapper = {
+    value: val,
+  };
+  // 使用 Object.defineProperty 在 warpper 对象上定义一个不可枚举的属性 __v_isRef，并设置值为 true   (不可枚举、不可写)
+  Object.defineProperty(wrapper, "__v_isRef", {
+    value: true,
+  });
+  // 将包裹对象变成响应式数据
+  return reactive(wrapper);
+}
+
 // 定义一个Map实例，存储原始对象到代理对象到映射
 const reactiveMap = new Map();
 
@@ -534,19 +584,14 @@ function shallowReadonly(obj) {
 }
 
 // test 区域
-const p1 = reactive(
-  new Map([
-    ["key1", "value1"],
-    ["key2", "value2"],
-  ])
-);
+const obj = reactive({ foo: 11, bar: 2 });
+const newObj = {
+  ...toRefs(obj),
+};
 
 effect(() => {
-  for (const key of p1.keys()) {
-    console.log(key);
-  }
+  console.log(newObj.foo.value);
 });
 
-setTimeout(() => {
-  p1.set("key3", "value3");
-}, 1000);
+newObj.foo.value = 10;
+newObj.foo.value = 15;
