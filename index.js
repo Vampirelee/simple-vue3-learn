@@ -518,6 +518,29 @@ function toRefs(obj) {
 }
 
 /**
+ * 代理Ref对象,实现自动脱 ref 的能力
+ */
+function proxyRefs(target) {
+  return new Proxy(target, {
+    get(target, key, receiver) {
+      const value = Reflect.get(target, key, receiver);
+      // 自动脱 ref 实现： 如果读取的值是ref，则返回它的 value 属性值
+      return value.__v_isRef ? value.value : value;
+    },
+    set(target, key, newValue, receiver) {
+      // 通过target 读取真实值
+      const value = target[key];
+      // 如果值是 Ref，则设置其对应的 value 属性值
+      if (value.__v_isRef) {
+        value.value = newValue;
+        return true;
+      }
+      return Reflect.set(target, key, newValue, receiver);
+    },
+  });
+}
+
+/**
  * toRef 函数
  * @param {} obj 响应式数据
  * @param {} key 响应式数据的 key
@@ -585,13 +608,12 @@ function shallowReadonly(obj) {
 
 // test 区域
 const obj = reactive({ foo: 11, bar: 2 });
-const newObj = {
+const newObj = proxyRefs({
   ...toRefs(obj),
-};
-
-effect(() => {
-  console.log(newObj.foo.value);
 });
 
-newObj.foo.value = 10;
-newObj.foo.value = 15;
+effect(() => {
+  console.log(newObj.foo);
+});
+
+newObj.foo = 2;
