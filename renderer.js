@@ -23,7 +23,7 @@ function createRenderer(options) {
 
   const mountElement = (vnode, container) => {
     // 创建 DOM 元素
-    const el = createElement(vnode.type);
+    const el = (vnode.el = createElement(vnode.type));
 
     // 处理子节点，如果子节点是字符串，代表元素具有文本节点
     if (typeof vnode.children === "string") {
@@ -46,14 +46,22 @@ function createRenderer(options) {
     insert(el, container);
   };
 
+  // 卸载操作
+  const unmount = (vnode) => {
+    const parent = vnode.el.parentNode;
+    if (parent) {
+      parent.removeChild(vnode.el);
+    }
+  };
+
   const render = (vnode, container) => {
     if (vnode) {
       // 新vnode存在，将其与旧 vnode 一起传递给 patch 函数，进行打补丁
       patch(container._vnode, vnode, container);
     } else {
       if (container._vnode) {
-        // 旧 vnode 存在，且新 vnode 不存在，说明是卸载操作，只需要将 container 内的 DOM 清空即可
-        container.innerHTML = "";
+        // 旧 vnode 存在，且新 vnode 不存在，说明是卸载操作，只需卸载
+        unmount(container._vnode);
       }
     }
     // 把vnode存储到 container._vnode下，即后续渲染中的旧的 vnode
@@ -88,7 +96,7 @@ const renderer = createRenderer({
   },
   patchProps(el, key, preValue, value) {
     // 对 class 类进行特殊处理（el.className、setAttribute 和 el.classList这三个方法都可以设置HTML的class属性，但经过测试 el.className性能最优）
-    if (key === 'class') {
+    if (key === "class") {
       el.className = value || "";
     }
     // 使用 in 操作符判断 key 是否存在对应的 DOM Properties
