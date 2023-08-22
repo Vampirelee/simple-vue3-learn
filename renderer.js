@@ -87,6 +87,10 @@ const renderer = createRenderer({
     parent.insertBefore(el, anchor);
   },
   patchProps(el, key, preValue, value) {
+    // 对 class 类进行特殊处理（el.className、setAttribute 和 el.classList这三个方法都可以设置HTML的class属性，但经过测试 el.className性能最优）
+    if (key === 'class') {
+      el.className = value || "";
+    }
     // 使用 in 操作符判断 key 是否存在对应的 DOM Properties
     if (shouldSetAsProps(el, key, value)) {
       // 使用 shouldSetAsProps 函数判断是否应该作为 DOM Properties 设置
