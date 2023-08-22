@@ -13,11 +13,25 @@ function createRenderer(options) {
    * @param {} container 容器
    */
   const patch = (n1, n2, container) => {
-    // 如果 n1(旧node) 不存在， 意味着挂载， 则调用 mountElement 函数完成挂载
-    if (!n1) {
-      mountElement(n2, container);
+    // 如果新旧vnode的类型不同(这里先简单把类型理解为 HTML 标签、组件、Fragment 等)，则直接将旧vnode卸载
+    if (n1 && n1.type !== n2.type) {
+      unmount(n1);
+      n1 = null;
+    }
+    // 代码运行到这里，证明 n1 和 n2 的类型相同
+    const { type } = n2;
+    // 如果 n2 类型是字符串，则描述的是普通标签元素
+    if (typeof type === "string") {
+      // 如果 n1(旧node) 不存在， 意味着挂载， 则调用 mountElement 函数完成挂载
+      if (!n1) {
+        mountElement(n2, container);
+      } else {
+        // 更新节点....
+      }
+      // 如果 n2 类型是对象，则描述的是组件
+    } else if (typeof type === "object") {
     } else {
-      // 更新节点....
+      console.log("其他情景");
     }
   };
 
