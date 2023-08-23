@@ -120,6 +120,8 @@ const renderer = createRenderer({
         if (!invoker) {
           // 如果没有 invoker，则将一个伪造的 invoker 缓存到 el._vei中
           invoker = el._vei[key] = (e) => {
+            // 如果事件发生的时间早于事件处理函数绑定的事件，则不执行事件处理函数
+            if (e.timeStamp < invoker.attached) return;
             // 如果 invoker.value是数组，则遍历它并逐个调用事件处理函数
             if (Array.isArray(invoker.value)) {
               invoker.value.forEach((fn) => fn(e));
@@ -130,6 +132,8 @@ const renderer = createRenderer({
           };
           // 将真正的事件处理函数赋值给 invoker.value
           invoker.value = nextValue;
+          // 添加 invoker.attached属性， 存储事件处理函数被绑定的时间
+          invoker.attached = performance.now();
           // 绑定 invoker 作为事件处理函数
           el.addEventListener(name, invoker);
         } else {
@@ -162,18 +166,30 @@ const renderer = createRenderer({
   },
 });
 
-const vnode = {
-  type: "div",
-  // 使用 prop 描述一个元素的属性
-  props: {
-    id: "foo1",
-  },
-  children: [
-    {
-      type: "p",
-      children: "hello world",
-    },
-  ],
-};
+const bol = ref(false);
 
-renderer.render(vnode, document.querySelector("#app"));
+effect(() => {
+  // 创建 vnode
+  const vnode = {
+    type: "div",
+    props: bol.value
+      ? {
+          onclick: () => {
+            alert("父元素 clicked");
+          },
+        }
+      : {},
+    children: [
+      {
+        type: "p",
+        props: {
+          onclick: () => {
+            bol.value = !bol.value;
+          },
+        },
+        children: "text",
+      },
+    ],
+  };
+  renderer.render(vnode, document.querySelector("#app"));
+});
