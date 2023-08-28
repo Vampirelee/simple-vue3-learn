@@ -1,11 +1,23 @@
 const { effect, ref } = VueReactivity;
 
+// 文本节点的标识
+const Text = Symbol("Text vnode");
+// 注释节点标识
+const Comment = Symbol("Text comment");
+
 /**
  * 创建渲染器
  */
 function createRenderer(options) {
   // 通过 options 得到操作 DOM 的 API
-  const { createElement, insert, setElementText, patchProps } = options;
+  const {
+    createElement,
+    insert,
+    setElementText,
+    createText,
+    setText,
+    patchProps,
+  } = options;
   /**
    * patch函数，挂载或者更新节点
    * @param {} n1 旧node
@@ -26,10 +38,27 @@ function createRenderer(options) {
       if (!n1) {
         mountElement(n2, container);
       } else {
-        // 更新节点....
+        patchElement(n1, n2);
       }
-      // 如果 n2 类型是对象，则描述的是组件
-    } else if (typeof type === "object") {
+    } else if (type === Text) {
+      // 如果新 vnode 的类型是Text， 则说明 vnode 描述的是文本节点
+      // 如果没有旧节点，则进行挂载
+      if (!n1) {
+        // 使用createTextNode 创建文本节点
+        const el = (n2.el = createText(n2.children));
+        // 将文本节点插入到容器
+        insert(el, container);
+      } else {
+        // 如果旧 vnode 存在，只需要使用新文本节点的文本内容更新旧文本节点即
+        const el = (n2.el = n1.el);
+        if (n2.children !== n1.children) {
+          // 调用 setText 函数更新文本节点的内容
+          setText(el, n2.children);
+        }
+      }
+    }
+    // 如果 n2 类型是对象，则描述的是组件
+    else if (typeof type === "object") {
     } else {
       console.log("其他情景");
     }
@@ -58,6 +87,58 @@ function createRenderer(options) {
     }
     // 将元素添加到容器中
     insert(el, container);
+  };
+
+  const patchChildren = (n1, n2, container) => {
+    // 判断新子节点的类型是否是文本节点
+    if (typeof n2.children === "string") {
+      // 旧子节点有三种可能，没有子节点、文本子节点以及一组子节点
+      // 只有当旧子节点为一组子节点时，才需要逐个卸载，其他情况什么都不需要
+      if (Array.isArray(n1.children)) {
+        n1.children.forEach((c) => unmount(c));
+      }
+      // 最后将新的文本节点内容设置给容器元素
+      setElementText(container, n2.children);
+    } else if (Array.isArray(n2.children)) {
+      if (Array.isArray(n1.children)) {
+        // 新旧节点都是一组子节点，此处逻辑为核心逻辑
+
+        // 先将旧的子节点全部卸载掉，然后再添加新的子节点
+        n1.children.forEach((c) => unmount(c));
+        n2.children.forEach((c) => patch(null, c, container));
+      } else {
+        // 新节点为一组子节点，旧节点为文本节点或没有
+        setElementText(container, "");
+        n2.children.forEach((c) => patch(null, c, container));
+      }
+    } else {
+      // 新的子节点不存在
+      if (Array.isArray(n1)) {
+        n1.children.forEach((c) => unmount(c));
+      } else if (typeof n1 === "string") {
+        setElementText(container, "");
+      }
+    }
+  };
+
+  const patchElement = (n1, n2) => {
+    const el = (n2.el = n1.el);
+    const oldProps = n1.props;
+    const newProps = n2.props;
+    // 第一步： 更新 props
+    for (const key in newProps) {
+      if (newProps[key] !== oldProps[key]) {
+        patchProps(el, key, oldProps[key], newProps[key]);
+      }
+    }
+    // 考虑旧节点有，新节点没有的情况
+    for (const key in oldProps) {
+      if (!(key in newProps)) {
+        patchProps(el, key, oldProps[key], newProps[key]);
+      }
+    }
+    // 更新 children
+    patchChildren(n1, n2, el);
   };
 
   // 卸载操作
@@ -107,6 +188,14 @@ const renderer = createRenderer({
   // 用于在给定的 parent 下添加指定元素
   insert(el, parent, anchor = null) {
     parent.insertBefore(el, anchor);
+  },
+  // 创建文本节点
+  createText(text) {
+    return document.createTextNode(text);
+  },
+  // 设置文本节点
+  setText(el, text) {
+    el.nodeValue = text;
   },
   patchProps(el, key, prevValue, nextValue) {
     // 匹配以 on 开头的属性， 视为事件
