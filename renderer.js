@@ -4,6 +4,8 @@ const { effect, ref } = VueReactivity;
 const Text = Symbol("Text vnode");
 // 注释节点标识
 const Comment = Symbol("Text comment");
+// Fragment 节点标识
+const Fragment = Symbol("Fragment");
 
 /**
  * 创建渲染器
@@ -55,6 +57,15 @@ function createRenderer(options) {
           // 调用 setText 函数更新文本节点的内容
           setText(el, n2.children);
         }
+      }
+    } else if (type === Fragment) {
+      // 处理Fragment 类型的 vnode
+      if (!n1) {
+        // 如果旧 vnode 不存在，则只需要将 Fragment 的children 逐个挂载即可
+        n2.children.forEach((c) => patch(null, c, container));
+      } else {
+        // 如果旧 vnode 存在，则只需要更新 Fragment 的children即可
+        patchChildren(n1, n2, container);
       }
     }
     // 如果 n2 类型是对象，则描述的是组件
@@ -143,6 +154,9 @@ function createRenderer(options) {
 
   // 卸载操作
   const unmount = (vnode) => {
+    if (vnode.type === Fragment) {
+      vnode.children.forEach((c) => unmount(c));
+    }
     const parent = vnode.el.parentNode;
     if (parent) {
       parent.removeChild(vnode.el);
