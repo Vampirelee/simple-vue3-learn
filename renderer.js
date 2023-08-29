@@ -115,8 +115,51 @@ function createRenderer(options) {
         // 新旧节点都是一组子节点，此处逻辑为核心逻辑
 
         // 先将旧的子节点全部卸载掉，然后再添加新的子节点
-        n1.children.forEach((c) => unmount(c));
-        n2.children.forEach((c) => patch(null, c, container));
+        const oldChildren = n1.children;
+        const newChildren = n2.children;
+
+        // 用来存储寻找过程中遇到的最大索引值
+        let lastIndex = 0;
+        for (let i = 0; i < newChildren.length; i++) {
+          const newVNode = newChildren[i];
+          for (let j = 0; j < oldChildren.length; j++) {
+            const oldVNode = oldChildren[j];
+            // 如果找到了具有相同 key 值的两个节点，说明可以复用(怎么理解复用？不重新卸载和挂载元素，而只是移动DOM元素的位置)，但仍然需要调用 patch 函数更新
+            if (newVNode.key === oldVNode.key) {
+              // patch只是更新新旧节点的相关变化的属性等，但是真实 DOM 元素的顺序还是按照旧子节点的顺序排布，故后面需要更新其位置信息
+              patch(oldVNode, newVNode, container);
+              if (j < lastIndex) {
+                // 如果当前找到的节点在旧 children 中的索引小于最大索引值 lastIndex, 说明该节点的真实DOM需要移动
+                // 先获取 newVNode 的前一个 vnode， 即 prevVNode
+                const prevVNode = newChildren[i - 1];
+                if (prevVNode) {
+                  // 由于我们要将 newVNode 对应的真实 DOM 移动到 prevVNode 所对应的真实 DOM 后面， 所以我们需要获取 prevVNode 所对应的真实DOM的下一个兄弟节点，并将其作为锚点
+                  const anchor = prevVNode.el.nextSibling;
+                  // 调用 insert 方法将 newVNode 对应的真实 DOM 插入到锚点元素前面，也就是 prevVNode 对应的真实 DOM 后面
+                  insert(newVNode.el, container, anchor);
+                }
+              } else {
+                // 如果当前找到的节点在旧 children 中的索引不小于最大索引值，则更新 lastIndex 的值
+                lastIndex = j;
+              }
+              break;
+            }
+          }
+        }
+
+        // 遍历新的children
+        for (let i = 0; i < newChildren.length; i++) {
+          const newVNode = newChildren[i];
+          // 遍历旧的 children
+          for (let j = 0; j < oldChildren.length; j++) {
+            const oldVNode = oldChildren[j];
+            // 如果找到了具有相同 key 值的两个节点，说明可以复用，但仍然需要调用 patch 函数更新
+            if (newVNode.key === oldVNode.key) {
+              patch(oldVNode, newVNode, container);
+              break; // 这里需要 break
+            }
+          }
+        }
       } else {
         // 新节点为一组子节点，旧节点为文本节点或没有
         setElementText(container, "");
@@ -269,30 +312,52 @@ const renderer = createRenderer({
   },
 });
 
-const bol = ref(false);
+const vnode = ref({
+  type: "div",
+  children: [
+    {
+      type: "p",
+      children: "1",
+      key: 1,
+    },
+    {
+      type: "p",
+      children: "2",
+      key: 2,
+    },
+    {
+      type: "p",
+      children: "hello",
+      key: 3,
+    },
+  ],
+});
 
 effect(() => {
   // 创建 vnode
-  const vnode = {
+
+  renderer.render(vnode.value, document.querySelector("#app"));
+});
+
+setTimeout(() => {
+  vnode.value = {
     type: "div",
-    props: bol.value
-      ? {
-          onclick: () => {
-            alert("父元素 clicked");
-          },
-        }
-      : {},
     children: [
       {
         type: "p",
-        props: {
-          onclick: () => {
-            bol.value = !bol.value;
-          },
-        },
-        children: "text",
+        children: "1",
+        key: 1,
+      },
+      {
+        type: "p",
+        children: "world",
+        key: 3,
+      },
+      {
+        type: "p",
+        children: "2",
+        key: 2,
       },
     ],
   };
-  renderer.render(vnode, document.querySelector("#app"));
-});
+}, 1000);
