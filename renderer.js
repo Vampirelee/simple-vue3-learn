@@ -127,7 +127,11 @@ function createRenderer(options) {
           for (let j = 0; j < oldChildren.length; j++) {
             const oldVNode = oldChildren[j];
             // 如果找到了具有相同 key 值的两个节点，说明可以复用(怎么理解复用？不重新卸载和挂载元素，而只是移动DOM元素的位置)，但仍然需要调用 patch 函数更新
-            if (newVNode.key === oldVNode.key) {
+            if (
+              "key" in newVNode &&
+              "key" in oldVNode &&
+              newVNode.key === oldVNode.key
+            ) {
               // 一旦找到可复用的节点，赋值 find
               find = true;
               // patch只是更新新旧节点的相关变化的属性等，但是真实 DOM 元素的顺序还是按照旧子节点的顺序排布，故后面需要更新其位置信息
@@ -160,6 +164,7 @@ function createRenderer(options) {
               // 没有，说明是第一个 vnode 节点 ，这是使用容器元素的 firstChild 作为锚点
               anchor = container.firstChild;
             }
+
             // 挂载 newVNode
             patch(null, newVNode, container, anchor);
           }
@@ -169,7 +174,10 @@ function createRenderer(options) {
         for (let i = 0; i < oldChildren.length; i++) {
           const oldVNode = oldChildren[i];
           // 拿旧节点 oldVNode 去新的一组子节点中寻找具有相同 key 值的节点
-          const has = newChildren.find((vnode) => vnode.key === oldVNode.key);
+          const has = newChildren.find(
+            (vnode) =>
+              "key" in vnode && "key" in oldVNode && vnode.key === oldVNode.key
+          );
           if (!has) {
             // 如果没有找到具有相同 key 值的节点，则说明需要删除该节点，调用 unmount 函数将其卸载
             unmount(oldVNode);
@@ -332,18 +340,15 @@ const vnode = ref({
   children: [
     {
       type: "p",
-      children: "1",
-      key: 1,
+      children: "111",
     },
     {
       type: "p",
       children: "2",
-      key: 2,
     },
     {
       type: "p",
       children: "hello",
-      key: 3,
     },
   ],
 });
@@ -361,17 +366,14 @@ setTimeout(() => {
       {
         type: "p",
         children: "new n11ode",
-        key: 4,
       },
       {
         type: "p",
         children: "world",
-        key: 3,
       },
       {
         type: "p",
-        children: "2",
-        key: 2,
+        children: "211",
       },
     ],
   };
