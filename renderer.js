@@ -26,7 +26,7 @@ function createRenderer(options) {
    * @param {} n2 新node
    * @param {} container 容器
    */
-  const patch = (n1, n2, container) => {
+  const patch = (n1, n2, container, anchor) => {
     // 如果新旧vnode的类型不同(这里先简单把类型理解为 HTML 标签、组件、Fragment 等)，则直接将旧vnode卸载
     if (n1 && n1.type !== n2.type) {
       unmount(n1);
@@ -38,7 +38,7 @@ function createRenderer(options) {
     if (typeof type === "string") {
       // 如果 n1(旧node) 不存在， 意味着挂载， 则调用 mountElement 函数完成挂载
       if (!n1) {
-        mountElement(n2, container);
+        mountElement(n2, container, anchor);
       } else {
         patchElement(n1, n2);
       }
@@ -75,7 +75,7 @@ function createRenderer(options) {
     }
   };
 
-  const mountElement = (vnode, container) => {
+  const mountElement = (vnode, container, anchor) => {
     // 创建 DOM 元素
     const el = (vnode.el = createElement(vnode.type));
 
@@ -97,7 +97,7 @@ function createRenderer(options) {
       }
     }
     // 将元素添加到容器中
-    insert(el, container);
+    insert(el, container, anchor);
   };
 
   const patchChildren = (n1, n2, container) => {
@@ -122,10 +122,14 @@ function createRenderer(options) {
         let lastIndex = 0;
         for (let i = 0; i < newChildren.length; i++) {
           const newVNode = newChildren[i];
+          // 在第一层循环体中定义变量find，代表是否在旧的一组子节点中找到可服用的节点
+          let find = false;
           for (let j = 0; j < oldChildren.length; j++) {
             const oldVNode = oldChildren[j];
             // 如果找到了具有相同 key 值的两个节点，说明可以复用(怎么理解复用？不重新卸载和挂载元素，而只是移动DOM元素的位置)，但仍然需要调用 patch 函数更新
             if (newVNode.key === oldVNode.key) {
+              // 一旦找到可复用的节点，赋值 find
+              find = true;
               // patch只是更新新旧节点的相关变化的属性等，但是真实 DOM 元素的顺序还是按照旧子节点的顺序排布，故后面需要更新其位置信息
               patch(oldVNode, newVNode, container);
               if (j < lastIndex) {
@@ -145,19 +149,19 @@ function createRenderer(options) {
               break;
             }
           }
-        }
-
-        // 遍历新的children
-        for (let i = 0; i < newChildren.length; i++) {
-          const newVNode = newChildren[i];
-          // 遍历旧的 children
-          for (let j = 0; j < oldChildren.length; j++) {
-            const oldVNode = oldChildren[j];
-            // 如果找到了具有相同 key 值的两个节点，说明可以复用，但仍然需要调用 patch 函数更新
-            if (newVNode.key === oldVNode.key) {
-              patch(oldVNode, newVNode, container);
-              break; // 这里需要 break
+          // 如果代码运行到这里， find 仍然为 false，说明当前 newVNode 没有在旧的一组节点中找到可复用的节点，即这个节点是新增的节点，需要挂载
+          if (!find) {
+            // 为了将节点挂载到正确的位置，我们需要先获取锚点元素，即当前 newVNode 节点的前一个节点
+            const prevVNode = newVNode[i - 1];
+            let anchor;
+            if (prevVNode) {
+              anchor = prevVNode.el.nextSibling;
+            } else {
+              // 没有，说明是第一个 vnode 节点 ，这是使用容器元素的 firstChild 作为锚点
+              anchor = container.firstChild;
             }
+            // 挂载 newVNode
+            patch(null, newVNode, container, anchor);
           }
         }
       } else {
