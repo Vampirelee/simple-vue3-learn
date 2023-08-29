@@ -164,6 +164,17 @@ function createRenderer(options) {
             patch(null, newVNode, container, anchor);
           }
         }
+
+        // 上面程序完成后，需要再次遍厉一边旧的子节点，找出旧节点存在但新节点不存在的节点
+        for (let i = 0; i < oldChildren.length; i++) {
+          const oldVNode = oldChildren[i];
+          // 拿旧节点 oldVNode 去新的一组子节点中寻找具有相同 key 值的节点
+          const has = newChildren.find((vnode) => vnode.key === oldVNode.key);
+          if (!has) {
+            // 如果没有找到具有相同 key 值的节点，则说明需要删除该节点，调用 unmount 函数将其卸载
+            unmount(oldVNode);
+          }
+        }
       } else {
         // 新节点为一组子节点，旧节点为文本节点或没有
         setElementText(container, "");
@@ -347,11 +358,6 @@ setTimeout(() => {
   vnode.value = {
     type: "div",
     children: [
-      {
-        type: "p",
-        children: "1",
-        key: 1,
-      },
       {
         type: "p",
         children: "new n11ode",
