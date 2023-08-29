@@ -152,7 +152,7 @@ function createRenderer(options) {
           // 如果代码运行到这里， find 仍然为 false，说明当前 newVNode 没有在旧的一组节点中找到可复用的节点，即这个节点是新增的节点，需要挂载
           if (!find) {
             // 为了将节点挂载到正确的位置，我们需要先获取锚点元素，即当前 newVNode 节点的前一个节点
-            const prevVNode = newVNode[i - 1];
+            const prevVNode = newChildren[i - 1];
             let anchor;
             if (prevVNode) {
               anchor = prevVNode.el.nextSibling;
@@ -351,6 +351,11 @@ setTimeout(() => {
         type: "p",
         children: "1",
         key: 1,
+      },
+      {
+        type: "p",
+        children: "new n11ode",
+        key: 4,
       },
       {
         type: "p",
