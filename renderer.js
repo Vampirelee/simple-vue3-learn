@@ -100,6 +100,74 @@ function createRenderer(options) {
     insert(el, container, anchor);
   };
 
+  // 双端diff算法
+  const patchKeyedChildren = (n1, n2, container) => {
+    const oldChildren = n1.children;
+    const newChildren = n2.children;
+    // 四个索引值
+    let oldStartIdx = 0;
+    let oldEndIdx = oldChildren.length - 1;
+    let newStartIdx = 0;
+    let newEndIdx = newChildren.length - 1;
+    // 四个索引值指向 vnode 节点
+    let oldStartVNode = oldChildren[oldStartIdx];
+    let newStartVNode = newChildren[newStartIdx];
+    let oldEndVNode = oldChildren[oldEndIdx];
+    let newEndVNode = newChildren[newEndIdx];
+
+    while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
+      // 如果 旧节点的首尾节点 是 undefined，说明已经在最后一个分支处理过了，更新它们即可
+      if (!oldEndVNode) {
+        oldEndVNode = oldChildren[--oldEndIdx];
+      } else if (!oldStartVNode) {
+        oldStartVNode = oldChildren[++oldStartIdx];
+      } else if (oldStartVNode.key === newStartVNode.key) {
+        // 节点在新的顺序中仍然处于头部，不需要移动，但仍然需要打补丁
+        patch(oldStartVNode, newStartVNode, container);
+        oldStartVNode = oldChildren[++oldStartIdx];
+        newStartVNode = newChildren[++newStartIdx];
+      } else if (oldEndVNode.key === newEndVNode.key) {
+        // 节点在新的顺序中仍然处于尾部，不需要移动，但仍然需要打补丁
+        patch(oldEndVNode, newEndVNode, container);
+        oldEndVNode = oldChildren[--oldEndIdx];
+        newEndVNode = newChildren[--newEndIdx];
+      } else if (oldStartVNode.key === newEndVNode.key) {
+        // 仍然需要调用 patch 函数进行打补丁
+        patch(oldStartVNode, newEndVNode, container);
+        // 移动DOM操作，将 oldStartVNode.el 移动 到 oldEndVNode.el后面
+        insert(oldStartVNode.el, container, oldEndVNode.el.nextSibling);
+        // 移动完后更新索引值
+        oldStartVNode = oldChildren[++oldStartIdx];
+        newEndVNode = newChildren[--newEndIdx];
+      } else if (oldEndVNode.key === newStartVNode.key) {
+        // 仍然需要调用 patch 函数进行打补丁
+        patch(oldEndVNode, newStartVNode, container);
+        // 移动 DOM 操作, 将 oldEndVNode.el 移动到 oldStartVNode.el前面
+        insert(oldEndVNode.el, container, oldStartVNode.el);
+        // 移动完后，更新索引值
+        oldEndVNode = oldChildren[--oldEndIdx];
+        newStartVNode = newChildren[++newStartIdx];
+      } else {
+        // 遍历旧的一组子节点，试图寻找与newStartVNode 拥有相同 key 值的节点， idxInOld 就是新的一组子节点的头部节点在旧的一组子节点中的索引
+        const idxInOld = oldChildren.findIndex(
+          (node) => node.key === newStartVNode.key
+        );
+        if (idxInOld > 0) {
+          // idxInOld 位置对应的 vnode 就是需要移动的节点
+          const vnodeToMove = oldChildren[idxInOld];
+          // 进行打补丁操作
+          patch(vnodeToMove, newStartVNode, container);
+          // 将 idxInOld位置对应的元素移动到开始节点处
+          insert(vnodeToMove.el, container, oldStartVNode.el);
+          // 由于 idxInOld 处节点对应的真实节点移动到了其他地方，因此需要将这里设置为 undefiend
+          oldChildren[idxInOld] = void 0;
+          // 更新 newStartIdx 的值
+          newStartVNode = newChildren[++newStartIdx];
+        }
+      }
+    }
+  };
+
   const patchChildren = (n1, n2, container) => {
     // 判断新子节点的类型是否是文本节点
     if (typeof n2.children === "string") {
@@ -112,6 +180,8 @@ function createRenderer(options) {
       setElementText(container, n2.children);
     } else if (Array.isArray(n2.children)) {
       if (Array.isArray(n1.children)) {
+        /*********************    简单diff算法 start   ********************/
+        /*
         // 新旧节点都是一组子节点，此处逻辑为核心逻辑
 
         // 先将旧的子节点全部卸载掉，然后再添加新的子节点
@@ -183,6 +253,11 @@ function createRenderer(options) {
             unmount(oldVNode);
           }
         }
+        */
+        /*********************    简单diff算法 end   ********************/
+        /*********************    双端diff算法 start   ********************/
+        patchKeyedChildren(n1, n2, container);
+        /*********************    双端diff算法 end   ********************/
       } else {
         // 新节点为一组子节点，旧节点为文本节点或没有
         setElementText(container, "");
