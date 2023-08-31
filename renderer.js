@@ -161,9 +161,26 @@ function createRenderer(options) {
           insert(vnodeToMove.el, container, oldStartVNode.el);
           // 由于 idxInOld 处节点对应的真实节点移动到了其他地方，因此需要将这里设置为 undefiend
           oldChildren[idxInOld] = void 0;
-          // 更新 newStartIdx 的值
-          newStartVNode = newChildren[++newStartIdx];
+        } else {
+          // 挂载新的节点到oldStartIdx前面的位置
+          patch(null, newStartVNode, container, oldStartVNode.el);
         }
+        // 更新 newStartIdx 的值
+        newStartVNode = newChildren[++newStartIdx];
+      }
+    }
+    // 循环结束后检查索引值的情况
+    if (oldEndIdx < oldStartIdx && newStartIdx <= newEndIdx) {
+      for (let i = newStartIdx; i <= newEndIdx; i++) {
+        const vnode = newChildren[i];
+        patch(null, vnode, container, oldStartVNode.el);
+      }
+    }
+    // 旧节点存在，新节点不存在的情况
+    else if (newEndIdx < newStartIdx && oldStartIdx <= oldEndIdx) {
+      for (let i = oldStartIdx; i <= oldEndIdx; i++) {
+        const vnode = oldChildren[i];
+        if (vnode) unmount(vnode);
       }
     }
   };
