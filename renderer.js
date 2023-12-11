@@ -1,4 +1,4 @@
-const { effect, ref } = VueReactivity;
+const { effect, ref, reactive } = VueReactivity;
 
 // 文本节点的标识
 const Text = Symbol("Text vnode");
@@ -6,6 +6,34 @@ const Text = Symbol("Text vnode");
 const Comment = Symbol("Text comment");
 // Fragment 节点标识
 const Fragment = Symbol("Fragment");
+
+// 任务缓存队列，用一个 Set 数据结构来表示，这样就可以自动对任务进行去重
+const queue = new Set();
+// 一个标志，代表是否正在刷新任务队列
+let isFlushing = false;
+const p = Promise.resolve();
+
+// 调度器的主要函数，用来将一个任务添加到缓冲队列中，并开始刷新队列
+function queueJob(job) {
+  // 将 job 添加到任务队列 queue 中
+  queue.add(job);
+  // 如果还没有开始刷新队列，则刷新之
+  if (!isFlushing) {
+    // 将该标志设置为true，以避免重复刷新
+    isFlushing = true;
+    // 在微任务中刷新缓冲队列
+    p.then(() => {
+      try {
+        // 执行任务队列中的任务
+        queue.forEach((job) => job());
+      } finally {
+        // 重置状态
+        isFlushing = false;
+        queue.clear();
+      }
+    });
+  }
+}
 
 /**
  * 创建渲染器
@@ -27,6 +55,7 @@ function createRenderer(options) {
    * @param {} container 容器
    */
   const patch = (n1, n2, container, anchor) => {
+    console.log(n1);
     // 如果新旧vnode的类型不同(这里先简单把类型理解为 HTML 标签、组件、Fragment 等)，则直接将旧vnode卸载
     if (n1 && n1.type !== n2.type) {
       unmount(n1);
@@ -70,6 +99,14 @@ function createRenderer(options) {
     }
     // 如果 n2 类型是对象，则描述的是组件
     else if (typeof type === "object") {
+      // vnode.type 的值是选项对象，作为组件来处理
+      if (!n1) {
+        // 挂载组件
+        mountComponent(n2, container, anchor);
+      } else {
+        // 更新组件
+        patchComponent(n1, n2, container);
+      }
     } else {
       console.log("其他情景");
     }
@@ -98,6 +135,29 @@ function createRenderer(options) {
     }
     // 将元素添加到容器中
     insert(el, container, anchor);
+  };
+
+  // 挂载组件
+  const mountComponent = (vnode, container, anchor) => {
+    // 通过 vnode 获取组件的选项对象，即 vnode.type
+    const componentOptions = vnode.type;
+    // 获取组件的渲染函数 render
+    const { render, data } = componentOptions;
+    // 调用 data 函数得到原始数据，并调用 reactive 函数将其包装为响应式数据
+    const state = reactive(data());
+    // 将组件的 render 函数调用包装到 effect 内
+    effect(
+      () => {
+        // 执行渲染函数，获取组件要渲染的内容，即 render 函数返回的虚拟 DOM
+        const subTree = render.call(state, state);
+        // 最后调用 patch 函数来挂载组件所描述的内容，即 subTree
+        patch(null, subTree, container, anchor);
+      },
+      {
+        // 指定该副作用函数的调度器为 queueJob 即可
+        scheduler: queueJob,
+      }
+    );
   };
 
   // 简单diff算法
@@ -603,54 +663,30 @@ const renderer = createRenderer({
   },
 });
 
-const vnode = ref({
-  type: "div",
-  key: "div",
-  children: [
-    {
-      type: "p",
-      key: "1",
-      children: "111",
-    },
-    {
-      type: "p",
-      key: "2",
-      children: "2",
-    },
-    {
-      type: "p",
-      key: "3",
-      children: "hello",
-    },
-  ],
-});
+const MyComponent = {
+  name: "MyComponent",
+  data() {
+    return {
+      foo: "hello world",
+    };
+  },
+  render() {
+    return {
+      type: "div",
+      props: {
+        onClick: () => {
+          console.log(1);
+          this.foo = "hello world 11";
+        },
+      },
+      // 在渲染函数内使用组件状态
+      children: `foo 的值是：${this.foo}`,
+    };
+  },
+};
 
 effect(() => {
   // 创建 vnode
 
-  renderer.render(vnode.value, document.querySelector("#app"));
+  renderer.render({ type: MyComponent }, document.querySelector("#app"));
 });
-
-setTimeout(() => {
-  vnode.value = {
-    type: "div",
-    key: "div",
-    children: [
-      {
-        type: "p",
-        key: "3",
-        children: "new n11ode",
-      },
-      {
-        type: "p",
-        key: "2",
-        children: "world",
-      },
-      {
-        type: "p",
-        key: "1",
-        children: "211",
-      },
-    ],
-  };
-}, 1000);
