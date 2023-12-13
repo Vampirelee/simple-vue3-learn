@@ -36,6 +36,22 @@ function queueJob(job) {
   }
 }
 
+// 全局变量，存储当前正在被初始化的组件实例
+let currentInstance = null;
+// 该方法接收组件实例作为参数，并将该实例设置为 currentInstance
+function setCurrentInstance(instance) {
+  currentInstance = instance;
+}
+
+function onMounted(fn) {
+  if (currentInstance) {
+    // 将生命周期函数添加到 instance.mounted 数组中
+    currentInstance.mounted.push(fn);
+  } else {
+    console.error("onMounted 函数只能在 setup 中调用");
+  }
+}
+
 /**
  * 创建渲染器
  */
@@ -190,6 +206,8 @@ function createRenderer(options) {
       subTree: null,
       // 将插槽添加到组件实例上
       slots,
+      // 在组件实例中添加 mounted 数据，用来存储通过 onMounted 函数注册的生命周期钩子函数
+      mounted: [],
     };
     // 定义 emit 函数，它接收两个参数， event: 事件名称， payload：传递给事件处理函数的参数
     const emit = (event, ...payload) => {
@@ -208,8 +226,12 @@ function createRenderer(options) {
     const slots = vnode.children || {};
     // 将 attrs、emit、slots 对象添加到setupContext中
     const setupContext = { attrs, emit, slots };
+    // 在调用 setup 函数之前，设置当前组件实例
+    setCurrentInstance(instance);
     // 调用 setup 函数， 将只读版本的 props 作为第一个参数传递， 避免用户意外地修改 props 的值，将 setupContext 作为第二个参数传递
     const setupResult = setup(shallowReadonly(instance.props), setupContext);
+    // 在调用 setup 函数之后，重置当前组件实例
+    setCurrentInstance(null);
     // setupState 用来存储由 setup 返回的数据
     let setupState = null;
     // 如果 setup 函数的返回值是函数，则将其作为渲染函数
@@ -266,7 +288,7 @@ function createRenderer(options) {
     effect(
       () => {
         // 调用组件的渲染函数，获得子树
-        const subTree = render.call(renderContext, state);
+        const subTree = render.call(renderContext, renderContext);
         // 检查组件是否已经被挂载
         if (!instance.isMounted) {
           // 这里调用 beforeMount 钩子
@@ -278,6 +300,9 @@ function createRenderer(options) {
           instance.isMounted = true;
           // 在这里调用 mounted 钩子
           mounted && mounted.call(renderContext);
+          // 遍历 instance.mounted数组并逐个执行即可
+          instance.mounted &&
+            instance.mounted.forEach((hook) => hook.call(renderContext));
         } else {
           // 在这里调用 beforeUpdate 钩子
           beforeUpdate && beforeUpdate.call(renderContext);
