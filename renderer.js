@@ -143,7 +143,8 @@ function createRenderer(options) {
     const attrs = {};
     // 遍历为组件传递到 props 数据
     for (const key in propsData) {
-      if (key in options) {
+      // 以字符串 on 开头的 props， 无论是否显示地声明，都将其添加到 props 数据中，而不是添加到 attrs 中
+      if (key in options || key.startsWith("on")) {
         // 如果为组件传递的 props 数据在组件自身的 props 选项中有定义，则将其视为合法的 props
         props[key] = propsData[key];
       } else {
@@ -188,8 +189,21 @@ function createRenderer(options) {
       // 组件所渲染的内容，即子树 subTree
       subTree: null,
     };
+    // 定义 emit 函数，它接收两个参数， event: 事件名称， payload：传递给事件处理函数的参数
+    const emit = (event, ...payload) => {
+      // 根据约定对事件名称进行处理，例如 change --> onChange
+      const eventName = `on${event[0].toUpperCase() + event.slice(1)}`;
+      // 根据处理后的事件名称去 props 中寻找对应的事件处理函数
+      const handler = instance.props[eventName];
+      if (handler) {
+        // 调用事件处理函数并传递参数
+        handler(...payload);
+      } else {
+        console.error("事件不存在");
+      }
+    };
 
-    const setupContext = { attrs /* TODO: ... emit, slots等 */ };
+    const setupContext = { attrs, emit /* TODO: slots等 */ };
     // 调用 setup 函数， 将只读版本的 props 作为第一个参数传递， 避免用户意外地修改 props 的值，将 setupContext 作为第二个参数传递
     const setupResult = setup(shallowReadonly(instance.props), setupContext);
     // setupState 用来存储由 setup 返回的数据
