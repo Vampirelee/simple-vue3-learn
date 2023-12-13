@@ -1,4 +1,5 @@
-const { effect, ref, reactive, shallowReactive } = VueReactivity;
+const { effect, ref, reactive, shallowReactive, shallowReadonly } =
+  VueReactivity;
 
 // 文本节点的标识
 const Text = Symbol("Text vnode");
@@ -161,6 +162,7 @@ function createRenderer(options) {
     const {
       render,
       data,
+      setup,
       props: propsOption,
       beforeCreate,
       created,
@@ -172,7 +174,7 @@ function createRenderer(options) {
     // 这里调用 beforeCreate 钩子
     beforeCreate && beforeCreate();
     // 调用 data 函数得到原始数据，并调用 reactive 函数将其包装为响应式数据
-    const state = reactive(data());
+    const state = data ? reactive(data()) : null;
     // 调用 resolveProps 函数解析出最终的 props 数据与 attrs 数据
     const [props, attrs] = resolveProps(propsOption, vnode.props);
     // 定义组件实例，一个组件实例本质上就是一个对象，它包含与组件有关的状态信息
@@ -186,6 +188,21 @@ function createRenderer(options) {
       // 组件所渲染的内容，即子树 subTree
       subTree: null,
     };
+
+    const setupContext = { attrs /* TODO: ... emit, slots等 */ };
+    // 调用 setup 函数， 将只读版本的 props 作为第一个参数传递， 避免用户意外地修改 props 的值，将 setupContext 作为第二个参数传递
+    const setupResult = setup(shallowReadonly(instance.props), setupContext);
+    // setupState 用来存储由 setup 返回的数据
+    let setupState = null;
+    // 如果 setup 函数的返回值是函数，则将其作为渲染函数
+    if (typeof setupResult === "function") {
+      if (render) console.error("setup函数返回渲染函数, render选项将被忽略");
+      render = setupResult;
+    } else {
+      // 如果 setup 的返回值不是函数，则作为数据状态赋值给 setupState
+      setupState = setupResult;
+    }
+
     // 将组件实例设置到 vnode 上，用于后续更新
     vnode.component = instance;
 
@@ -200,6 +217,9 @@ function createRenderer(options) {
         } else if (k in props) {
           // 如果组件自身没有该数据，则尝试从 props 中读取
           return props[k];
+        } else if (setupState && k in setupState) {
+          // 渲染上下文需要增加对 setupState 对支持
+          return setupState[k];
         } else {
           console.error("不存在");
         }
@@ -210,6 +230,9 @@ function createRenderer(options) {
           state[k] = v;
         } else if (k in props) {
           console.warn(`Attempting to mutate prop "${k}". Props are readonly.`);
+        } else if (setupState && k in setupState) {
+          // 渲染上下文需要增加对 setupState 对支持
+          setupState[k] = v;
         } else {
           console.error("不存在");
         }
