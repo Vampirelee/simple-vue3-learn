@@ -1,4 +1,4 @@
-const { effect, ref, reactive } = VueReactivity;
+const { effect, ref, reactive, shallowReactive } = VueReactivity;
 
 // 文本节点的标识
 const Text = Symbol("Text vnode");
@@ -136,6 +136,23 @@ function createRenderer(options) {
     insert(el, container, anchor);
   };
 
+  // resolveProps 函数用于解析组件 props 和 attrs 数据
+  const resolveProps = (options, propsData) => {
+    const props = {};
+    const attrs = {};
+    // 遍历为组件传递到 props 数据
+    for (const key in propsData) {
+      if (key in options) {
+        // 如果为组件传递的 props 数据在组件自身的 props 选项中有定义，则将其视为合法的 props
+        props[key] = propsData[key];
+      } else {
+        // 否则将其作为 attrs
+        attrs[key] = propsData[key];
+      }
+    }
+    return [props, attrs];
+  };
+
   // 挂载组件
   const mountComponent = (vnode, container, anchor) => {
     // 通过 vnode 获取组件的选项对象，即 vnode.type
@@ -144,6 +161,7 @@ function createRenderer(options) {
     const {
       render,
       data,
+      props: propsOption,
       beforeCreate,
       created,
       beforeMount,
@@ -155,10 +173,14 @@ function createRenderer(options) {
     beforeCreate && beforeCreate();
     // 调用 data 函数得到原始数据，并调用 reactive 函数将其包装为响应式数据
     const state = reactive(data());
+    // 调用 resolveProps 函数解析出最终的 props 数据与 attrs 数据
+    const [props, attrs] = resolveProps(propsOption, vnode.props);
     // 定义组件实例，一个组件实例本质上就是一个对象，它包含与组件有关的状态信息
     const instance = {
       // 组件自身的状态数据，即 data
       state,
+      // 将解析出的 props 数据包装为 shallowReactive 并定义到组件实例上
+      props: shallowReactive(props),
       // 一个布尔值，用来表示组件是否已经被挂载，初始值为 false
       isMounted: false,
       // 组件所渲染的内容，即子树 subTree
@@ -203,6 +225,41 @@ function createRenderer(options) {
         scheduler: queueJob,
       }
     );
+  };
+
+  // 判断组件的新旧 props 是否存在
+  const hasPropsChanged = (prevProps, nextProps) => {
+    const nextKeys = Object.keys(nextProps);
+    const prevKeys = Object.keys(prevProps);
+    // 如果新旧 props 的数量变了， 则说明有变化
+    if (nextKeys.length !== prevKeys.length) return true;
+    for (let i = 0; i < nextKeys.length; i++) {
+      const key = nextKeys[i];
+      // 有不相等的 props， 则说明有变化
+      if (nextProps[key] !== prevProps[key]) return true;
+    }
+    return false;
+  };
+
+  // 更新组件
+  const patchComponent = (n1, n2, anchor) => {
+    // 获取组件实例，即 n1.component, 同时让新的组件虚拟节点 n2.component 也指向组件实例
+    const instance = (n2.component = n1.component);
+    // 获取当前的 props 数据
+    const { props } = instance;
+    // 调用 hasPropsChanged 检测为子组件传递的 props 是否发生变化，如果没有变化，则不需要更新
+    if (hasPropsChanged(n1.props, n2.props)) {
+      // 调用 resolveProps 函数重新获取 props 数据
+      const [nextProps] = resolveProps(n2.type.props, n2.props);
+      // 更新 props
+      for (const k in nextProps) {
+        props[k] = nextProps[k];
+      }
+      // 删除不存在的 props
+      for (const k in props) {
+        if (!(k in nextProps)) delete props[k];
+      }
+    }
   };
 
   // 简单diff算法
@@ -710,6 +767,10 @@ const renderer = createRenderer({
 
 const MyComponent = {
   name: "MyComponent",
+  // 组件接收名为 title 的props，并且该 props 的类型为 String
+  props: {
+    title: String,
+  },
   data() {
     return {
       foo: "hello world",
@@ -725,13 +786,16 @@ const MyComponent = {
         },
       },
       // 在渲染函数内使用组件状态
-      children: `foo 的值是：${this.foo}`,
+      children: `foo 的值是：${this.foo}; title: ${this.title}`,
     };
   },
 };
-
+const vnode = {
+  type: MyComponent,
+  props: { title: "A big Title" },
+};
 effect(() => {
   // 创建 vnode
 
-  renderer.render({ type: MyComponent }, document.querySelector("#app"));
+  renderer.render(vnode, document.querySelector("#app"));
 });
