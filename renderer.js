@@ -194,7 +194,22 @@ function createRenderer(options) {
     const state = data ? reactive(data()) : null;
     // 调用 resolveProps 函数解析出最终的 props 数据与 attrs 数据
     const [props, attrs] = resolveProps(propsOption, vnode.props);
+    // 直接使用编译好的 vnode.children 对象作为 slots 对象即可
+    const slots = vnode.children || {};
     // 定义组件实例，一个组件实例本质上就是一个对象，它包含与组件有关的状态信息
+    // 定义 emit 函数，它接收两个参数， event: 事件名称， payload：传递给事件处理函数的参数
+    const emit = (event, ...payload) => {
+      // 根据约定对事件名称进行处理，例如 change --> onChange
+      const eventName = `on${event[0].toUpperCase() + event.slice(1)}`;
+      // 根据处理后的事件名称去 props 中寻找对应的事件处理函数
+      const handler = instance.props[eventName];
+      if (handler) {
+        // 调用事件处理函数并传递参数
+        handler(...payload);
+      } else {
+        console.error("事件不存在");
+      }
+    };
     const instance = {
       // 组件自身的状态数据，即 data
       state,
@@ -209,21 +224,7 @@ function createRenderer(options) {
       // 在组件实例中添加 mounted 数据，用来存储通过 onMounted 函数注册的生命周期钩子函数
       mounted: [],
     };
-    // 定义 emit 函数，它接收两个参数， event: 事件名称， payload：传递给事件处理函数的参数
-    const emit = (event, ...payload) => {
-      // 根据约定对事件名称进行处理，例如 change --> onChange
-      const eventName = `on${event[0].toUpperCase() + event.slice(1)}`;
-      // 根据处理后的事件名称去 props 中寻找对应的事件处理函数
-      const handler = instance.props[eventName];
-      if (handler) {
-        // 调用事件处理函数并传递参数
-        handler(...payload);
-      } else {
-        console.error("事件不存在");
-      }
-    };
-    // 直接使用编译好的 vnode.children 对象作为 slots 对象即可
-    const slots = vnode.children || {};
+
     // 将 attrs、emit、slots 对象添加到setupContext中
     const setupContext = { attrs, emit, slots };
     // 在调用 setup 函数之前，设置当前组件实例
