@@ -1,5 +1,12 @@
-const { effect, ref, reactive, shallowReactive, shallowReadonly } =
-  VueReactivity;
+const {
+  effect,
+  ref,
+  reactive,
+  shallowReactive,
+  shallowRef,
+  shallowReadonly,
+  onUnmounted,
+} = VueReactivity;
 
 // 文本节点的标识
 const Text = Symbol("Text vnode");
@@ -50,6 +57,82 @@ function onMounted(fn) {
   } else {
     console.error("onMounted 函数只能在 setup 中调用");
   }
+}
+
+// defineAsyncComponent 函数用于定义一个异步组件，接收一个异步组件加载器作为参数
+function defineAsyncComponent(options) {
+  // options 可以是配置项，也可以是加载器, 这里的技巧，参数归一
+  if (typeof options === "function") {
+    // 如果 options 是加载器，则将其格式化配置项形式
+    options = {
+      loader: options,
+    };
+  }
+  const { loader } = options;
+  // 一个变量，用来存储异步加载到组件
+  let InnerComp = null;
+  // 返回一个包装组件
+  return {
+    name: "AsyncComponentWrapper",
+    setup() {
+      // 异步组件是否加载成功
+      const loaded = ref(false);
+      // 定义 error，当错误发生时，用来存储错误对象
+      // 一个标志，代表是否正在加载，默认为 false
+      const loading = ref(false);
+      let loadingTimer = null;
+      // 如果配置项中存在 delay， 则开启一个定时器计时，当延迟到时后将 loading.value 设置为 true
+      if (options.delay) {
+        loadingTimer = setTimeout(() => {
+          loading.value = true;
+        }, options.delay);
+      } else {
+        // 如果配置项中没有delay，则直接标记为加载中
+        loading.value = true;
+      }
+      const error = shallowRef(null);
+      // 执行加载器函数，返回一个 Promise 实例
+      // 加载成功后，将加载成功的组件赋值给 InnerComp，并将 loaded 标记 true，代表加载成功
+      loader()
+        .then((c) => {
+          InnerComp = c;
+          loaded.value = true;
+        })
+        .catch((err) => {
+          err.value = err;
+        })
+        .finally(() => {
+          loading.value = false;
+          clearTimeout(loadingTimer);
+        });
+      let timer = null;
+      if (options.timeout) {
+        timer = setTimeout(() => {
+          const err = new Error(
+            `Async component timed out after ${options.timeout}ms`
+          );
+          error.value = err;
+        }, options.timeout);
+      }
+      // 包装组件被卸载时清除定时器
+      onUnmounted(() => clearTimeout(timer));
+
+      // 占位内容
+      const placeholder = { type: Text, children: "" };
+
+      return () => {
+        // 如果异步组件加载成功，则渲染该组件，否则渲染一个占位内容
+        if (loaded.value) {
+          return { type: InnerComp };
+        } else if (error.value && options.errorComponent) {
+          return { type: options.errorComponent, props: error.value };
+        } else if (loading.value && options.loadingComponent) {
+          return { type: options.loadingComponent };
+        }
+        return placeholder;
+      };
+    },
+  };
 }
 
 /**
@@ -748,6 +831,10 @@ function createRenderer(options) {
   const unmount = (vnode) => {
     if (vnode.type === Fragment) {
       vnode.children.forEach((c) => unmount(c));
+    } else if (typeof vnode.type === "object") {
+      // 对于组件的卸载，本质上是要卸载所渲染的内容， 即 subTree
+      unmount(vnode.component.subTree);
+      return;
     }
     const parent = vnode.el.parentNode;
     if (parent) {
