@@ -219,8 +219,8 @@ function createRenderer(options) {
         patchChildren(n1, n2, container);
       }
     }
-    // 如果 n2 类型是对象，则描述的是组件
-    else if (typeof type === "object") {
+    // 如果 n2 类型是对象或函数(函数式组件)，则描述的是组件,
+    else if (typeof type === "object" || typeof type === "function") {
       // vnode.type 的值是选项对象，作为组件来处理
       if (!n1) {
         // 挂载组件
@@ -279,8 +279,17 @@ function createRenderer(options) {
 
   // 挂载组件
   const mountComponent = (vnode, container, anchor) => {
+    // 检查是否是函数式组件
+    const isFunctional = typeof vnode.type === "function";
     // 通过 vnode 获取组件的选项对象，即 vnode.type
-    const componentOptions = vnode.type;
+    let componentOptions = vnode.type;
+    if (isFunctional) {
+      // 如果是函数式组件，则将 vnode.type 作为渲染函数，将 vnode.type.props 作为 props 选项定义即可
+      componentOptions = {
+        render: vnode.type,
+        props: vnode.type.props,
+      };
+    }
     // 获取组件的渲染函数 render 及生命周期函数
     const {
       render,
