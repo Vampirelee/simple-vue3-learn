@@ -71,6 +71,28 @@ function defineAsyncComponent(options) {
   const { loader } = options;
   // 一个变量，用来存储异步加载到组件
   let InnerComp = null;
+
+  // 记录重试次数
+  let retries = 0;
+
+  // 封装 load 函数用来加载异步组件
+  function load() {
+    return loader().catch((err) => {
+      // 如果用户指定了 onError 回调, 则将控制权交给用户
+      if (options.onError) {
+        return new Promise((resolve, reject) => {
+          const retry = () => {
+            resolve(load());
+            retries++;
+          };
+          const fail = () => reject(err);
+          options.onError(retry, fail, retries);
+        });
+      } else {
+        throw err;
+      }
+    });
+  }
   // 返回一个包装组件
   return {
     name: "AsyncComponentWrapper",
@@ -78,6 +100,7 @@ function defineAsyncComponent(options) {
       // 异步组件是否加载成功
       const loaded = ref(false);
       // 定义 error，当错误发生时，用来存储错误对象
+      const error = shallowRef(null);
       // 一个标志，代表是否正在加载，默认为 false
       const loading = ref(false);
       let loadingTimer = null;
@@ -90,10 +113,10 @@ function defineAsyncComponent(options) {
         // 如果配置项中没有delay，则直接标记为加载中
         loading.value = true;
       }
-      const error = shallowRef(null);
+
       // 执行加载器函数，返回一个 Promise 实例
       // 加载成功后，将加载成功的组件赋值给 InnerComp，并将 loaded 标记 true，代表加载成功
-      loader()
+      load()
         .then((c) => {
           InnerComp = c;
           loaded.value = true;
