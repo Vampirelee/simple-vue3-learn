@@ -50,7 +50,7 @@ function tokenize(str) {
       case State.tagOpen: {
         if (isAlpha(char)) {
           // 1. 遇到字母，切换到标签名称状态
-          currentState = State.tagEndName;
+          currentState = State.tagName;
           // 2. 将当前字符缓存到 chars 数组
           chars.push(char);
           // 3. 消费当前字符
@@ -146,5 +146,58 @@ function tokenize(str) {
   return tokens;
 }
 
+// parse 函数接收模版作为参数
+function parse(str) {
+  const tokens = tokenize(str);
+  // 创建根节点
+  const root = {
+    type: "Root",
+    children: [],
+  };
+  // 创建 elementStack 栈，起初只有 Root 根节点
+  const elementStack = [root];
+  // 开启一个 while 循环扫描 tokens，直到所有 Token 都被扫描完毕为止
+  while (tokens.length) {
+    // 获取当前栈顶节点作为父节点 parent
+    const parent = elementStack[elementStack.length - 1];
+    // 当前扫描的Token
+    const t = tokens.shift();
+    switch (t.type) {
+      case "tag": {
+        // 如果当前 Token 是开始标签，则创建 Element 类型的 AST 节点
+        const elementNode = {
+          type: "Element",
+          tag: t.name,
+          children: [],
+        };
+        parent.children.push(elementNode);
+        elementStack.push(elementNode);
+        break;
+      }
+      case "text": {
+        const textNode = {
+          type: "Text",
+          content: t.content,
+        };
+        parent.children.push(textNode);
+        break;
+      }
+      case "tagEnd": {
+        // 遇到结束标签，将栈顶节点弹出
+        elementStack.pop();
+        break;
+      }
+    }
+  }
+  return root;
+}
 
-console.log(tokenize("<p>Vue</p>"));
+console.log(
+  JSON.stringify(
+    parse(
+      "<div><p><span>Vue</span><span>React</span></p><p>Template</p></div>"
+    ),
+    null,
+    2
+  )
+);
