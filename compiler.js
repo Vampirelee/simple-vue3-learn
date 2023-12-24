@@ -192,12 +192,48 @@ function parse(str) {
   return root;
 }
 
-console.log(
-  JSON.stringify(
-    parse(
-      "<div><p><span>Vue</span><span>React</span></p><p>Template</p></div>"
-    ),
-    null,
-    2
-  )
-);
+// traverseNode 函数
+function traverseNode(ast, context) {
+  // 当前节点，ast本身就是 Root 节点
+  const currentNode = ast;
+  // context.nodeTransforms 是一个数组，其中每一个元素都是一个函数
+  const transforms = context.nodeTransforms;
+  for (let i = 0; i < transforms.length; i++) {
+    // 将当前节点 currentNode 和 context 都传递给 nodeTransforms 中注册的回调函数
+    const t = transforms[i];
+    t(currentNode, context);
+  }
+  // 如果有子节点，则递归地调用 traverseNode 函数进行遍历
+  const children = currentNode.children;
+  if (children) {
+    for (let i = 0; i < children.length; i++) {
+      const node = children[i];
+      traverseNode(node);
+    }
+  }
+}
+
+// dump工具函数，用于打印当前AST中节点的信息
+function dump(node, indent = 0) {
+  // 节点的类型
+  const type = node.type;
+  // 节点的描述，如果是根节点，则没有描述，如果是 Element 类型的节点，则使用 node.tag 作为节点的描述, 如果是 Text 类型的节点，则使用 node.content 作为节点的描述
+  const desc =
+    node.type === "Root"
+      ? ""
+      : node.type === "Element"
+      ? node.tag
+      : node.content;
+
+  // 打印节点的信息
+  console.log(`${"-".repeat(indent)}${type}:${desc}`);
+  // 递归调用子节点
+  node.children?.forEach((element) => {
+    dump(element, indent + 2);
+  });
+}
+
+const vueTemplate =
+  "<div><p><span>Vue</span><span>React</span></p><p>Template</p></div>";
+console.log(JSON.stringify(parse(vueTemplate), null, 2));
+dump(parse(vueTemplate));
