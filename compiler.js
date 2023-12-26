@@ -315,6 +315,48 @@ function traverseNode(ast, context) {
     exitFns[i]();
   }
 }
+// 编译模版函数
+function compile(template) {
+  // 模版 AST
+  const ast = parse(template);
+  transform(ast);
+  const code = generate(ast.jsNode);
+  return code;
+}
+// 代码生成器函数
+function generate(node) {
+  const context = {
+    // 存储最终生成的渲染函数代码
+    code: "",
+    // 在生成代码时，通过调用 push 函数完成代码的拼接
+    push(code) {
+      context.code += code;
+    },
+    // 当前缩进的级别，初始值为0，即没有缩进
+    currentIndent: 0,
+    // 该函数用来换行，即在代码字符串的后面追加 \n 字符，换行时应该保留缩进，所以我们还要追加 currentIndent * 2个空格字符
+    newline() {
+      context.code += "\n" + `  `.repeat(context.currentIndent);
+    },
+    // 用来缩进，即让 currentIndent 自增后，调用换行函数
+    indent() {
+      context.currentIndent++;
+      context.newline();
+    },
+    // 取消缩进，即让 currentIndent 自减后，调用换行函数
+    deIndent() {
+      context.currentIndent--;
+      context.newline();
+    },
+  };
+
+  // 调用 genNode 函数完成代码生成的工作
+  genNode(node, context);
+  // 返回渲染函数代码
+  return context.code;
+}
+
+function genNode(node, context) {}
 
 // FunctionDeclNode 结构
 const FunctionDeclNode = {
