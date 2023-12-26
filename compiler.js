@@ -192,16 +192,56 @@ function parse(str) {
   return root;
 }
 
+// 转换元素
 function transformElement(node, context) {
-  if (node.type === "Element" && node.tag === "p") {
-    node.tag = "h1";
-  }
+  // 将转换代码编写在退出阶段的回调函数中，这样可以保证该标签节点全部被处理完毕
+
+  return () => {
+    // 如果被转换的节点不是元素节点，则什么都不做
+    if (node.type !== "Element") return;
+
+    // 创建 h 函数调用语句， h函数调用的第一个参数是标签名称，因此我们以 node.tag 来创建一个字符串字面量点作为第一个参数
+    const callExp = createCallExpression("h", [createStringLiteral(node.tag)]);
+
+    // 处理 h 函数调用的参数
+    node.children.length === 1
+      ? // 如果当前标签节点只有一个子节点，则直接使用子节点的jsNode作为参数
+        callExp.arguments.push(node.children[0].jsNode)
+      : // 如果当前标签节点有多个子节点，则创建一个 ArrayExpression 节点作为参数
+        callExp.arguments.push(
+          createArrayExpression(node.children.map((c) => c.jsNode))
+        );
+    // 将当前标签节点对应的 JavaScript AST 添加到 jsNode属性下
+    node.jsNode = callExp;
+  };
 }
+
+function transformRoot(node) {
+  // 将逻辑编写在退出阶段的回调函数中，保证子节点全部被处理完毕
+  return () => {
+    if (node.type !== "Root") return;
+
+    // node是根节点，根节点的第一个子节点就是模版的根节点，这里暂时不考虑存在多个根节点的情况
+    const vnodeJSAST = node.children[0].jsNode;
+    node.jsNode = {
+      type: "FunctionDecl",
+      id: { type: "Identifier", name: "render" },
+      params: [],
+      body: [
+        {
+          type: "ReturnStatement",
+          return: vnodeJSAST,
+        },
+      ],
+    };
+  };
+}
+
 function transformText(node, context) {
-  if (node.type === "Text") {
-    node.content = node.content.repeat(2);
-    context.removeNode();
-  }
+  // 如果不是文本节点，则什么都不做
+  if (node.type !== "Text") return;
+  // 文本节点对应的 JavaScript AST 节点其实就是一个字符串字面量，因此只需要使用 node.content 创建一个 StringLiteral 类型的节点即可，最后将文本节点对应的 JavaScript AST节点添加到 node.jsNode 属性下
+  node.jsNode = createStringLiteral(node.content);
 }
 
 // transform 函数
@@ -324,28 +364,39 @@ const FunctionDeclNode = {
     },
   ],
 };
-// 描述函数调用语句
-const CallExp = {
-  type: "CallExpression",
-  // 用来描述被调用函数的名称，它本身是一个标识符节点
-  callee: {
+
+// 用来创建 StringLiteral节点
+function createStringLiteral(value) {
+  return {
+    type: "StringLiteral",
+    value,
+  };
+}
+
+// 用来创建 Identifier 节点
+function createIdentifier(name) {
+  return {
     type: "Identifier",
-    name: "h",
-  },
-  // 参数
-  arguments: [],
-};
-// 字符串字面量
-const Str = {
-  type: "StringLiteral",
-  value: "div",
-};
-// 数组
-const Arr = {
-  type: "ArrayExpression",
-  // 数组中的元素
-  elements: [],
-};
+    name,
+  };
+}
+
+// 用来创建 ArrayExpression 节点
+function createArrayExpression(elements) {
+  return {
+    type: "ArrayExpression",
+    elements,
+  };
+}
+
+// 用来创建 CallExpression 节点
+function createCallExpression(callee, arguments) {
+  return {
+    type: "CallExpression",
+    callee: createIdentifier(callee),
+    arguments,
+  };
+}
 
 // dump工具函数，用于打印当前AST中节点的信息
 function dump(node, indent = 0) {
