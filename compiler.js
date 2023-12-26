@@ -276,6 +276,77 @@ function traverseNode(ast, context) {
   }
 }
 
+// FunctionDeclNode 结构
+const FunctionDeclNode = {
+  // 代表该节点是函数声明
+  type: "FunctionDecl",
+  id: {
+    type: "Identifier",
+    name: "render", // name 用来存储标识符的名称，在这里它就是渲染函数名称 render
+  },
+  params: [], // 参数，目前渲染函数还不需要参数
+
+  // 函数体的内容 return h("div", [h("p", "Vue"), h("p", "Template")]);
+  body: [
+    {
+      type: "ReturnStatement",
+      return: {
+        type: "CallExpression",
+        callee: { type: "Identifier", name: "h" },
+        arguments: [
+          { type: "StringLiteral", value: "div" },
+          {
+            type: "ArrayExpression",
+            elements: [
+              {
+                type: "Callexpression",
+                callee: { type: "Identifier", name: "h" },
+                arguments: [
+                  { type: "StringLiteral", value: "p" },
+                  { type: "StringLiteral", value: "Vue" },
+                ],
+              },
+              {
+                type: "CallExpression",
+                callee: { type: "Identifier", name: "h" },
+                arguments: [
+                  {
+                    type: "StringLiteral",
+                    value: "p",
+                  },
+                  { type: "StringLiteral", value: "Template" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+};
+// 描述函数调用语句
+const CallExp = {
+  type: "CallExpression",
+  // 用来描述被调用函数的名称，它本身是一个标识符节点
+  callee: {
+    type: "Identifier",
+    name: "h",
+  },
+  // 参数
+  arguments: [],
+};
+// 字符串字面量
+const Str = {
+  type: "StringLiteral",
+  value: "div",
+};
+// 数组
+const Arr = {
+  type: "ArrayExpression",
+  // 数组中的元素
+  elements: [],
+};
+
 // dump工具函数，用于打印当前AST中节点的信息
 function dump(node, indent = 0) {
   // 节点的类型
