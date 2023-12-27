@@ -202,7 +202,6 @@ function transformElement(node, context) {
 
     // 创建 h 函数调用语句， h函数调用的第一个参数是标签名称，因此我们以 node.tag 来创建一个字符串字面量点作为第一个参数
     const callExp = createCallExpression("h", [createStringLiteral(node.tag)]);
-
     // 处理 h 函数调用的参数
     node.children.length === 1
       ? // 如果当前标签节点只有一个子节点，则直接使用子节点的jsNode作为参数
@@ -269,7 +268,7 @@ function transform(ast) {
       }
     },
     // 注册 nodeTransform 数组
-    nodeTransforms: [transformElement, transformText],
+    nodeTransforms: [transformRoot, transformElement, transformText],
   };
   // 调用 traverseNode 完成转换
   traverseNode(ast, context);
@@ -356,10 +355,77 @@ function generate(node) {
   return context.code;
 }
 
-function genNode(node, context) {}
+function genNode(node, context) {
+  switch (node.type) {
+    case "FunctionDecl":
+      genFunctionDecl(node, context);
+      break;
+    case "ReturnStatement":
+      genReturnStatement(node, context);
+      break;
+    case "CallExpression":
+      genCallExpression(node, context);
+      break;
+    case "StringLiteral":
+      genStringLiteral(node, context);
+      break;
+    case "ArrayExpression":
+      genArrayExpression(node, context);
+      break;
+  }
+}
+
+function genNodeList(nodes, context) {
+  const { push } = context;
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    genNode(node, context);
+    if (i < nodes.length - 1) push(", ");
+  }
+}
+function genFunctionDecl(node, context) {
+  const { push, indent, deIndent } = context;
+  push(`function ${node.id.name} `);
+  push("(");
+  genNodeList(node.params, context);
+  push(") ");
+  push("{");
+  indent();
+  node.body.forEach((n) => genNode(n, context));
+  deIndent();
+  push("}");
+}
+function genReturnStatement(node, context) {
+  const { push } = context;
+  // 追加 return 关键字和空格
+  push("return ");
+  // 调用 genNode 函数递归地生成返回值代码
+  genNode(node.return, context);
+}
+function genCallExpression(node, context) {
+  const { push } = context;
+  const { callee, arguments: args } = node;
+  push(`${callee.name}`);
+  push("(");
+  genNodeList(args, context);
+  push(")");
+}
+function genStringLiteral(node, context) {
+  const { push } = context;
+  // 对于字符串字面量，只需要追加与 node.value 对应的字符串即可
+  push(`"${node.value}"`);
+}
+function genArrayExpression(node, context) {
+  const { push } = context;
+  // 追加方括号
+  push("[");
+  // 调用 genNodeList 为数组元素生成代码
+  genNodeList(node.elements, context);
+  push("]");
+}
 
 // FunctionDeclNode 结构
-const FunctionDeclNode = {
+/* const FunctionDeclNode = {
   // 代表该节点是函数声明
   type: "FunctionDecl",
   id: {
@@ -405,7 +471,7 @@ const FunctionDeclNode = {
       },
     },
   ],
-};
+}; */
 
 // 用来创建 StringLiteral节点
 function createStringLiteral(value) {
@@ -463,4 +529,4 @@ function dump(node, indent = 0) {
 const vueTemplate =
   "<div><p><span>Vue</span><span>React</span></p><p>Template</p></div>";
 
-transform(parse(vueTemplate));
+console.log(compile(vueTemplate));
