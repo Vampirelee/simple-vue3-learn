@@ -1,4 +1,10 @@
-const fs = require("node:fs");
+// 解析器的不同文本模式，在不同文本模式下，解析到同一个字符时可能有不同的含义
+const TextModes = {
+  DATA: "DATA",
+  RCDATA: "RCDATA",
+  RAWTEXT: "RAWTEXT",
+  CDATA: "CDATA",
+};
 // 定义状态机状态
 const State = {
   initial: 1, // 初始状态
@@ -146,8 +152,78 @@ function tokenize(str) {
   return tokens;
 }
 
-// parse 函数接收模版作为参数
+// 解析注释
+function parseComment(context) {}
+
+// 解析 CDATA
+function parseCDATA(context, ancestors) {}
+
+// 解析标签名
+function parseElement(context, ancestors) {}
+
+// 解析 {{}} 插值
+function parseInterpolation(context) {}
+
+// 解析文本节点
+function parseText(context) {}
+
+function parseChildren(context, ancestors) {
+  // 定义 nodes 数组存储子节点，它将作为最终的返回值
+  let nodes = [];
+  // 从上下文对象中取得当前状态，包括模式 mode 和模版内容 source
+  const { mode, source } = context;
+  while (!isEnd(context, ancestors)) {
+    let node;
+    if (mode === TextModes.DATA || mode === TextModes.RCDATA) {
+      if (mode === TextModes.DATA && source[0] === "<") {
+        if (source[1] === "!") {
+          if (source.startsWith("<!--")) {
+            // 注释
+            node = parseComment(context);
+          } else if (source.startsWith("<![CDATA[")) {
+            // CDATA
+            node = parseCDATA(context, ancestors);
+          }
+        } else if (source[1] === "/") {
+          // 结束标签，这里需要抛出错误，
+        } else if (/[a-z]/i.test(source[1])) {
+          // 标签
+          node = parseElement(context, ancestors);
+        }
+      } else if (source.startsWith("{{")) {
+        // 解析插值
+        node = parseInterpolation(context);
+      }
+    }
+    if (!node) {
+      // 解析文本节点
+      node = parseText(context);
+    }
+    nodes.push(node);
+  }
+  return nodes;
+}
+
 function parse(str) {
+  // 定义上下文对象
+  const context = {
+    // source 是模版内容，用于在解析过程中进行消费
+    source: str,
+    // 解析器当前处于文本模式，初始模式为 DATA
+    mode: TextModes.DATA,
+  };
+  // 调用 parseChildren 函数开始进行解析，它返回解析后得到的子节点，接收两个参数。第一个参数上下文对象 context，第二个参数是由父代节点构成的节点栈，初始时栈为空
+  const nodes = parseChildren(context, []);
+
+  // 解析器返回 Root 根节点
+  return {
+    type: "Root",
+    children: nodes,
+  };
+}
+
+// parse 函数接收模版作为参数
+/* function parse(str) {
   const tokens = tokenize(str);
   // 创建根节点
   const root = {
@@ -190,7 +266,7 @@ function parse(str) {
     }
   }
   return root;
-}
+} */
 
 // 转换元素
 function transformElement(node, context) {
