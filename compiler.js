@@ -158,8 +158,68 @@ function parseComment(context) {}
 // 解析 CDATA
 function parseCDATA(context, ancestors) {}
 
-// 解析标签名
-function parseElement(context, ancestors) {}
+// 解析标签函数
+function parseTag(context, type = "start") {
+  const { advanceBy, advanceSpaces } = context;
+
+  const match =
+    type === "start"
+      ? // 匹配开始标签
+        /^<([a-z][^\t\r\n\f /]*)/i.exec(context.source)
+      : // 匹配结束标签
+        /^<\/(a-z)[^\t\r\n\f /]*/i.exec(context.source);
+  // 匹配成功后，正在表达式的第一个捕获组的值就是标签名称
+  const tag = match[1];
+  advanceBy(match[0].length);
+  // 消费标签中无用的空白字符
+  advanceSpaces();
+  // 在消费匹配的内容后，如果字符串以 '/>' 开头，则说明这是一个自闭合标签
+  const isSelfClosing = context.source.startsWith("/>");
+  // 如果是自闭合标签，则消费 '/>', 否则消费 '>'
+  advanceBy(isSelfClosing ? 2 : 1);
+
+  // 返回标签节点
+  return {
+    type: "Element",
+    tag,
+    props: [],
+    children: [],
+    isSelfClosing,
+  };
+}
+
+/**
+ * 解析标签名, 会做三件事，解析开始标签，解析子节点，解析结束标签
+ * @param {*} context 上下文对象
+ * @param {*} ancestors 祖先节点
+ */
+function parseElement(context, ancestors) {
+  // 解析开始标签
+  const element = parseTag(context);
+  if (element.isSelfClosing) return element;
+
+  // 切换到正确的文本模式
+  if (element.tag === "textarea" || element.tag === "title") {
+    context.mode = TextModes.RCDATA;
+  } else if (/style|xmp|iframe|nodembed|noframes|noscript/.test(element.tag)) {
+    context.mode = TextModes.RAWTEXT;
+  } else {
+    context.mode = TextModes.DATA;
+  }
+  ancestors.push(element);
+  // 递归地调用 parseChildren 函数进行 <div> 标签子节点的解析
+  element.children = parseChildren(context, ancestors);
+  ancestors.pop();
+
+  if (context.source.startsWith(`</${element.tag}`)) {
+    // 解析结束标签
+    parseTag(context, "end");
+  } else {
+    // 缺少闭合标签
+    console.log(`${element.tag} 标签缺少闭合标签`);
+  }
+  return element;
+}
 
 // 解析 {{}} 插值
 function parseInterpolation(context) {}
@@ -204,6 +264,18 @@ function parseChildren(context, ancestors) {
   return nodes;
 }
 
+function isEnd(context, ancestors) {
+  // 当模版内容解析完毕后，停止
+  if (!context.source) return true;
+
+  for (let i = ancestors.length - 1; i >= 0; --i) {
+    // 获取祖先标签节点（为了更好的提示，这里不找栈顶父级节点做比较）
+    const ancestor = ancestors[i];
+    // 如果遇到结束标签，并且该标签与父级标签节点同名，则停止
+    if (context.source.startsWith(`</${ancestor.tag}>`)) return true;
+  }
+}
+
 function parse(str) {
   // 定义上下文对象
   const context = {
@@ -211,6 +283,20 @@ function parse(str) {
     source: str,
     // 解析器当前处于文本模式，初始模式为 DATA
     mode: TextModes.DATA,
+
+    // advanceBy 函数用来消费指定数量的字符，它接收一个数字作为参数
+    advanceBy(num) {
+      // 根据给定字符数 num，截取位置num后的模版内容，并替换当前模版
+      context.source = context.source.slice(num);
+    },
+    // 无论是开始标签还是结束标签，都可能存在无用的空白字符，例如 <div   >
+    advanceSpaces() {
+      // 匹配空白字符
+      const match = /^[\t\r\n\f ]+/.exec(context.source);
+      if (match) {
+        context.advanceBy(match[0].length);
+      }
+    },
   };
   // 调用 parseChildren 函数开始进行解析，它返回解析后得到的子节点，接收两个参数。第一个参数上下文对象 context，第二个参数是由父代节点构成的节点栈，初始时栈为空
   const nodes = parseChildren(context, []);
@@ -602,7 +688,9 @@ function dump(node, indent = 0) {
   });
 }
 
-const vueTemplate =
-  "<div><p><span>Vue</span><span>React</span></p><p>Template</p></div>";
+const vueTemplate = `<div>
+  <p>Text1</p>
+  <p>Text2</p>
+</div>`;
 
 console.log(compile(vueTemplate));
