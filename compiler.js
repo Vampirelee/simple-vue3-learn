@@ -158,6 +158,67 @@ function parseComment(context) {}
 // 解析 CDATA
 function parseCDATA(context, ancestors) {}
 
+// 解析指令和属性
+function parseAttributes(context) {
+  const props = [];
+
+  const { advanceBy, advanceSpaces } = context;
+  while (!context.source.startsWith(">") && !context.source.startsWith("/>")) {
+    // 解析属性和指令
+
+    // 匹配属性名称
+    const match = /^[^\t\r\n\f />][^\t\r\n\f />=]*/.exec(context.source);
+
+    const name = match[0];
+
+    // 消费属性名称
+    advanceBy(name.length);
+    // 消费属性名称和等于号之间的空白
+    advanceSpaces();
+    // 消费等于号
+    advanceBy(1);
+    // 消费等于号与属性值之间的空白字符
+    advanceSpaces();
+
+    // 属性值
+    let value = "";
+
+    // 获取当前模版内容的第一个字符
+    const quote = context.source[0];
+    // 判断属性值是否被引号引用
+    const isQuoted = quote === "'" || quote === '"';
+    if (isQuoted) {
+      // 消费引号
+      advanceBy(1);
+      // 获取下一个引号的索引
+      const endQuoteIndex = context.source.indexOf(quote);
+      if (endQuoteIndex > -1) {
+        value = context.source.slice(0, endQuoteIndex);
+        // 消费属性值
+        advanceBy(value.length);
+        // 消费引号
+        advanceBy(1);
+      } else {
+        // 缺少引号错误
+        console.error("缺少引号");
+      }
+    } else {
+      // 代码运行到这里，说明属性值没有被引号引用，下一个空白字符之前到内容全部作为属性值
+      const match = /^[^\t\r\n\f >]+/.exec(context.source);
+      value = match[0];
+      advanceBy(value.length);
+    }
+
+    advanceSpaces();
+    props.push({
+      type: "Attribute",
+      name,
+      value,
+    });
+  }
+  return props;
+}
+
 // 解析标签函数
 function parseTag(context, type = "start") {
   const { advanceBy, advanceSpaces } = context;
@@ -165,14 +226,17 @@ function parseTag(context, type = "start") {
   const match =
     type === "start"
       ? // 匹配开始标签
-        /^<([a-z][^\t\r\n\f /]*)/i.exec(context.source)
+        /^<([a-z][^\t\r\n\f />]*)/i.exec(context.source)
       : // 匹配结束标签
-        /^<\/(a-z)[^\t\r\n\f /]*/i.exec(context.source);
+        /^<\/(a-z)[^\t\r\n\f />]*/i.exec(context.source);
   // 匹配成功后，正在表达式的第一个捕获组的值就是标签名称
   const tag = match[1];
   advanceBy(match[0].length);
   // 消费标签中无用的空白字符
   advanceSpaces();
+
+  // 解析vue指令和属性, parseAttribute函数返回数组
+  const props = parseAttributes(context);
   // 在消费匹配的内容后，如果字符串以 '/>' 开头，则说明这是一个自闭合标签
   const isSelfClosing = context.source.startsWith("/>");
   // 如果是自闭合标签，则消费 '/>', 否则消费 '>'
@@ -182,7 +246,8 @@ function parseTag(context, type = "start") {
   return {
     type: "Element",
     tag,
-    props: [],
+    // 添加 props 数组
+    props,
     children: [],
     isSelfClosing,
   };
@@ -688,7 +753,7 @@ function dump(node, indent = 0) {
   });
 }
 
-const vueTemplate = `<div>
+const vueTemplate = `<div v-show="true"  @click = "handleClick" v-on:mousedown="onMouseDown">
   <p>Text1</p>
   <p>Text2</p>
 </div>`;
