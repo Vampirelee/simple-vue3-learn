@@ -297,7 +297,33 @@ function parseElement(context, ancestors) {
 }
 
 // 解析 {{}} 插值
-function parseInterpolation(context) {}
+function parseInterpolation(context) {
+  // 消费开始定界符
+  context.advanceBy("{{".length);
+  // 找到结束定界符的位置索引
+  closeIndex = context.source.indexOf("}}");
+  if (closeIndex < 0) {
+    console.error("插值缺少结束定界符");
+  }
+
+  // 截取开始定界符与结束定界符之间的内容作为插值表达式
+  const content = context.source.slice(0, closeIndex);
+  // 消费表达式的内容
+  context.advanceBy(content.length);
+  // 消费结束定界符
+  context.advanceBy("}}".length);
+
+  // 返回类型为 Interpolation 的节点，代表插值节点
+  return {
+    type: "Interpolation",
+    // 插值节点的 content 是一个类型为 Expression 的表达式节点
+    context: {
+      type: "Expression",
+      // 表达式节点的内容则是经过 HTML 解码后的插值表达式
+      content: decodeHtml(content),
+    },
+  };
+}
 
 // 解析文本节点
 function parseText(context) {
@@ -321,7 +347,7 @@ function parseText(context) {
   return {
     // 节点类型
     type: "Text",
-    content,
+    content: decodeHtml(content), // 调用 decodeHtml 函数解码内容
   };
 }
 
@@ -330,7 +356,7 @@ function decodeHtml(rawText, asAttr = false) {
   let offset = 0;
   const end = rawText.length;
   // 经过解码后的文本将作为返回值被返回
-  let decodeText = "";
+  let decodedText = "";
   // 引用表中实体名称的最大长度
   let maxCRNameLength = 0;
 
@@ -411,7 +437,7 @@ function decodeHtml(rawText, asAttr = false) {
     }
   }
 
-  return decodeText;
+  return decodedText;
 }
 
 function parseChildren(context, ancestors) {
