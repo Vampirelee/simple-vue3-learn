@@ -162,9 +162,6 @@ function tokenize(str) {
   return tokens;
 }
 
-// 解析注释
-function parseComment(context) {}
-
 // 解析 CDATA
 function parseCDATA(context, ancestors) {}
 
@@ -238,7 +235,7 @@ function parseTag(context, type = "start") {
       ? // 匹配开始标签
         /^<([a-z][^\t\r\n\f />]*)/i.exec(context.source)
       : // 匹配结束标签
-        /^<\/(a-z)[^\t\r\n\f />]*/i.exec(context.source);
+        /^<\/[a-z][^\t\r\n\f />]*/i.exec(context.source);
   // 匹配成功后，正在表达式的第一个捕获组的值就是标签名称
   const tag = match[1];
   advanceBy(match[0].length);
@@ -463,27 +460,27 @@ function decodeHtml(rawText, asAttr = false) {
 function parseChildren(context, ancestors) {
   // 定义 nodes 数组存储子节点，它将作为最终的返回值
   let nodes = [];
-  // 从上下文对象中取得当前状态，包括模式 mode 和模版内容 source
-  const { mode, source } = context;
+  // 从上下文对象中取得当前状态
+  const { mode } = context;
   while (!isEnd(context, ancestors)) {
     let node;
     if (mode === TextModes.DATA || mode === TextModes.RCDATA) {
-      if (mode === TextModes.DATA && source[0] === "<") {
-        if (source[1] === "!") {
-          if (source.startsWith("<!--")) {
+      if (mode === TextModes.DATA && context.source[0] === "<") {
+        if (context.source[1] === "!") {
+          if (context.source.startsWith("<!--")) {
             // 注释
             node = parseComment(context);
-          } else if (source.startsWith("<![CDATA[")) {
+          } else if (context.source.startsWith("<![CDATA[")) {
             // CDATA
             node = parseCDATA(context, ancestors);
           }
-        } else if (source[1] === "/") {
+        } else if (context.source[1] === "/") {
           // 结束标签，这里需要抛出错误，
-        } else if (/[a-z]/i.test(source[1])) {
+        } else if (/[a-z]/i.test(context.source[1])) {
           // 标签
           node = parseElement(context, ancestors);
         }
-      } else if (source.startsWith("{{")) {
+      } else if (context.source.startsWith("{{")) {
         // 解析插值
         node = parseInterpolation(context);
       }
@@ -922,9 +919,7 @@ function dump(node, indent = 0) {
   });
 }
 
-const vueTemplate = `<div v-show="true"  @click = "handleClick" v-on:mousedown="onMouseDown">
-  <p>Text1</p>
-  <p>Text2</p>
-</div>`;
+const vueTemplate = `<div><!-- comments --></div>
+<div>foo {{ bar }} baz</div>`;
 
-console.log(compile(vueTemplate));
+console.log(JSON.stringify(parse(vueTemplate), null, 2));
